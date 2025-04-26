@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <string.h>
 #include "syna.h"
@@ -116,16 +117,13 @@ inline void addPixelFast(unsigned char *p,int br1,int br2) {
 }
 
 void fadeFade() {
-  register unsigned long *ptr = (unsigned long*)output;
-  int i = outWidth*outHeight*2/4;
+  register uint32_t *ptr = (uint32_t*)output;
+  int i = outWidth*outHeight*2/sizeof(uint32_t);
   do {
     //Bytewize version was: *(ptr++) -= *ptr+(*ptr>>1)>>4;
-    if (*ptr)
-      //if (*ptr & 0xf0f0f0f0ul)
-        *(ptr++) -= ((*ptr & 0xf0f0f0f0ul) >> 4) + ((*ptr & 0xe0e0e0e0ul) >> 5);
-      //else {
-      //  *(ptr++) = (*ptr * 14 >> 4) & 0x0f0f0f0ful;
-      //}
+    uint32_t x = *ptr;
+    if (x)
+        *(ptr++) = x - ((x & 0xf0f0f0f0ul) >> 4) - ((x & 0xe0e0e0e0ul) >> 5);
     else
       ptr++;
   } while(--i > 0);
@@ -287,6 +285,7 @@ void fade() {
 int coreGo() { 
   double x[NumSamples], y[NumSamples];
   double a[NumSamples], b[NumSamples];
+  double energy;
   int clarity[NumSamples]; //Surround sound
   int i,j,k;
   
@@ -301,8 +300,10 @@ int coreGo() {
   }
 
   fft(x,y);
-  
-  for(i=0 +1;i<NumSamples;i++) {
+
+  energy = 0.0;
+
+  for(i=0 +1;i<NumSamples/2;i++) {
     double x1 = x[bitReverse[i]], 
            y1 = y[bitReverse[i]], 
            x2 = x[bitReverse[NumSamples-i]], 
@@ -315,39 +316,29 @@ int coreGo() {
         ( (x1+x2) * (x1-x2) + (y1+y2) * (y1-y2) )/(aa+bb) * 256 );
     else
       clarity[i] = 0;
+
+    energy += (aa+bb)*i*i;
   } 
+
+  energy = sqrt(energy/NumSamples)/65536.0;
    
-  // Asger Alstrupt's optimized 32 bit fade
-  // (alstrup@diku.dk)
-  /*register unsigned long *ptr = (unsigned long*)output;
-  i = outWidth*outHeight*2/4;
-  do {
-    //Bytewize version was: *(ptr++) -= *ptr+(*ptr>>1)>>4;
-    if (*ptr)
-      if (*ptr & 0xf0f0f0f0ul)
-        *(ptr++) -= ((*ptr & 0xf0f0f0f0ul) >> 4) + ((*ptr & 0xe0e0e0e0ul) >> 5);
-      else {
-        *(ptr++) = (*ptr * 14 >> 4) & 0x0f0f0f0ful;
-            //Should be 29/32 to be consistent. Who cares. This is totally
-            // hacked anyway. 
-        //unsigned char *subptr = (unsigned char*)(ptr++);
-        //subptr[0] = (int)subptr[0] * 29 / 32;
-        //subptr[1] = (int)subptr[0] * 29 / 32;
-        //subptr[2] = (int)subptr[0] * 29 / 32;
-        //subptr[3] = (int)subptr[0] * 29 / 32;
-      }
-    else
-      ptr++;
-  } while(--i > 0);
-  */
- 
-  int heightFactor = NumSamples/2 / outHeight + 1;
-  int actualHeight = NumSamples/2/heightFactor;
-  int heightAdd = outHeight + actualHeight >> 1;
+  //int heightFactor = NumSamples/2 / outHeight + 1;
+  //int actualHeight = NumSamples/2/heightFactor;
+  //int heightAdd = outHeight + actualHeight >> 1;
 
   /* Correct for window size */
+  //double brightFactor2 = (brightFactor/65536.0/NumSamples)*
+  //    sqrt(actualHeight*outWidth/(320.0*200.0));
   double brightFactor2 = (brightFactor/65536.0/NumSamples)*
-      sqrt(actualHeight*outWidth/(320.0*200.0));
+      sqrt(outHeight*outWidth/(320.0*200.0));
+
+  // Some more arbitrary constants,
+  // this time for dynamic range compression of the display
+  // (breath slowly, relax, please don't hunt me down and kill me)
+  static double energy_avg = 80.0;
+  energy_avg = energy_avg*0.95 + energy*0.05;
+  if (energy_avg > 0.0)
+    brightFactor2 *= 80.0/(energy_avg + 5.0);
 
   for(i=1;i<NumSamples/2;i++) {
     //int h = (int)( b[i]*280 / (a[i]+b[i]+0.0001)+20 );
@@ -357,11 +348,13 @@ int coreGo() {
           (a[i]+b[i])*i*brightFactor2 );
       br1 = br*(clarity[i]+128)>>8;
       br2 = br*(128-clarity[i])>>8;
+
       if (br1 < 0) br1 = 0; else if (br1 > 255) br1 = 255;
       if (br2 < 0) br2 = 0; else if (br2 > 255) br2 = 255;
-      //unsigned char *p = output+ h*2+(164-((i<<8)>>m))*(outWidth*2); 
+
       int px = h, 
-          py = heightAdd - i / heightFactor;
+          py = outHeight-i*outHeight/(NumSamples/2);
+          //was heightAdd - i / heightFactor;
 
       if (pointsAreDiamonds) {
         addPixel(px,py,br1,br2);

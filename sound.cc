@@ -34,12 +34,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
 #include <linux/soundcard.h>
 #include <linux/cdrom.h>
 //#include <linux/ucdrom.h>
 #else
-#include <machine/soundcard.h>
+#include <sys/soundcard.h>
 #include <sys/cdio.h>
 #define CDROM_LEADOUT 0xAA
 #define CD_FRAMES 75 /* frames per second */
@@ -48,6 +48,7 @@
 #include <time.h>
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <string.h>
 #include "syna.h"
@@ -87,7 +88,7 @@ void getTrackInfo(void) {
   trackFrame = 0;
   trackCount  = 0;
 
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   cdrom_tochdr cdTochdr;
   if (-1 == ioctl(cdDevice, CDROMREADTOCHDR, &cdTochdr))
 #else
@@ -95,7 +96,7 @@ void getTrackInfo(void) {
   if (-1 == ioctl(cdDevice, CDIOREADTOCHEADER, (char *)&cdTochdr))
 #endif
      return;
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   trackCount = cdTochdr.cdth_trk1;
 #else
   trackCount = cdTochdr.ending_track - cdTochdr.starting_track + 1;
@@ -104,7 +105,7 @@ void getTrackInfo(void) {
   int i;
   trackFrame = new int[trackCount+1];
   for(i=trackCount;i>=0;i--) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
     cdrom_tocentry cdTocentry;
     cdTocentry.cdte_format = CDROM_MSF;
     cdTocentry.cdte_track  = (i == trackCount ? CDROM_LEADOUT : i+1);
@@ -120,7 +121,7 @@ void getTrackInfo(void) {
     //Bug fix: thanks to Ben Gertzfield  (9/7/98)
     //Leadout track is sometimes reported as data.
     //Added check for this.
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
     if (-1 == ioctl(cdDevice, CDROMREADTOCENTRY, & cdTocentry) ||
         (i != trackCount && (cdTocentry.cdte_ctrl & CDROM_DATA_TRACK)))
       trackFrame[i] = (i==trackCount?0:trackFrame[i+1]);
@@ -153,7 +154,7 @@ int cdGetTrackFrame(int track) {
 }
 
 void cdPlay(int frame, int endFrame) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   cdrom_msf msf;
 #else
   struct ioc_play_msf msf;
@@ -168,7 +169,7 @@ void cdPlay(int frame, int endFrame) {
   // (Sybren Stuvel)
   cdStop();
   
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   msf.cdmsf_min0 = frame / (60*CD_FRAMES);
   msf.cdmsf_sec0 = frame / CD_FRAMES % 60;
   msf.cdmsf_frame0 = frame % CD_FRAMES;
@@ -181,7 +182,7 @@ void cdPlay(int frame, int endFrame) {
   //Bug fix: thanks to Martin Mitchell
   //An out by one error that affects some CD players. 
   //Have to use endFrame-1 rather than endFrame (9/7/98)
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   msf.cdmsf_min1 = (endFrame-1) / (60*CD_FRAMES);
   msf.cdmsf_sec1 = (endFrame-1) / CD_FRAMES % 60;
   msf.cdmsf_frame1 = (endFrame-1) % CD_FRAMES;
@@ -195,7 +196,7 @@ void cdPlay(int frame, int endFrame) {
 }
 
 void cdGetStatus(int &track, int &frames, SymbolID &state) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   cdrom_subchnl subchnl;
   subchnl.cdsc_format = CDROM_MSF;
   if (-1 == ioctl(cdDevice, CDROMSUBCHNL, &subchnl)) {
@@ -215,7 +216,7 @@ void cdGetStatus(int &track, int &frames, SymbolID &state) {
     state = (state == Open ? Open : NoCD); /* ? */
     return;
   }
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   track = subchnl.cdsc_trk;
   frames  = subchnl.cdsc_reladdr.msf.minute*60*CD_FRAMES+
             subchnl.cdsc_reladdr.msf.second*CD_FRAMES+
@@ -228,7 +229,7 @@ void cdGetStatus(int &track, int &frames, SymbolID &state) {
 #endif
   
   SymbolID oldState = state;
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   switch(subchnl.cdsc_audiostatus) {
     case CDROM_AUDIO_PAUSED    : state = Pause; break;
     case CDROM_AUDIO_PLAY      : state = Play; break;
@@ -259,35 +260,35 @@ void cdGetStatus(int &track, int &frames, SymbolID &state) {
 
 void cdStop(void) {
   //attemptNoDie(ioctl(cdDevice, CDROMSTOP),"stopping CD");
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   ioctl(cdDevice, CDROMSTOP);
 #else
   ioctl(cdDevice, CDIOCSTOP);
 #endif
 }
 void cdPause(void) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   attemptNoDie(ioctl(cdDevice, CDROMPAUSE),"pausing CD",true);
 #else
   attemptNoDie(ioctl(cdDevice, CDIOCPAUSE),"pausing CD",true);
 #endif
 }
 void cdResume(void) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   attemptNoDie(ioctl(cdDevice, CDROMRESUME),"resuming CD",true);
 #else
   attemptNoDie(ioctl(cdDevice, CDIOCRESUME),"resuming CD",true);
 #endif
 }
 void cdEject(void) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   attemptNoDie(ioctl(cdDevice, CDROMEJECT),"ejecting CD",true);
 #else
   attemptNoDie(ioctl(cdDevice, CDIOCEJECT),"ejecting CD",true);
 #endif
 }
 void cdCloseTray(void) {
-#ifndef __FreeBSD__
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
   attemptNoDie(ioctl(cdDevice, CDROMCLOSETRAY),"ejecting CD",true);
 #else
   attemptNoDie(ioctl(cdDevice, CDIOCCLOSE),"ejecting CD",true);
@@ -307,10 +308,108 @@ void cdCloseTray(void) {
 //computers
 #define MAXWINDOWSIZE 32
 
+//Used for various buffers
+#define BUFFERSIZE (1<<18)
+
 static SoundSource source;
 static int inFrequency, downFactor, windowSize, pipeIn, device;
-static short *dataIn;
+
+// pipe stuff
+//static int16_t *dataIn;
+//static int dataInAvailable; // current size of data available
+//static int feederFd; // fd of pipe to feeded process
+char pipeBuffer[BUFFERSIZE];
+int pipeBufferUsed, pipeBufferDelay;
+
 static char *mixer;
+
+int readWholeBlock(int pipe,char *dest,int length) {
+  while(length > 0) {
+    int result = read(pipe,dest,length);
+    if (result < 1)
+      return -1;
+    dest += result;
+    length -= result;
+  }
+  return 0;
+}
+
+int writeWholeBlock(int pipe,char *src,int length) {
+  while(length > 0) {
+    int result = write(pipe,src,length);
+    if (result < 1)
+      return -1;
+    src += result;
+    length -= result;
+  }
+  return 0;
+}
+
+int makePiper(void) {
+  int p[2];
+  attempt(pipe(p), "making pipe");
+
+  if (!fork()) {
+    close(p[0]);
+
+    static char buffer[BUFFERSIZE];
+    int bufferUsed = 0;
+    int device_p = 0;
+    bool doneReading = false;
+
+    while(!doneReading || bufferUsed >= 256) {
+      fd_set readers, writers;
+      FD_ZERO(&readers);
+      if (bufferUsed < BUFFERSIZE-256) FD_SET(0, &readers);
+      FD_ZERO(&writers);
+      if (device_p >= 4) FD_SET(p[1], &writers);
+      if (bufferUsed-device_p >= 256) FD_SET(device, &writers);
+
+      select((p[1]<device?device:p[1])+1, &readers, &writers, 0, 0);
+      
+      if (FD_ISSET(device, &writers) && bufferUsed-device_p >= 256) {
+        int n = write(device, buffer+device_p, 256);
+
+        if (n < 1)
+          break;
+
+        device_p += n;
+      }
+
+      if (FD_ISSET(0, &readers) && bufferUsed < BUFFERSIZE-256) {
+        int n = read(0, buffer+bufferUsed, 256);
+
+        if (n < 1)
+          doneReading = true;
+        
+        bufferUsed += n;
+      }
+
+      if (FD_ISSET(p[1], &writers) && device_p >= 4) {
+        static char b2[BUFFERSIZE];
+        int b2Used = 0;
+        for(int i=0;i<device_p;i += downFactor*4) {
+          *(uint32_t*)(b2+b2Used) = *(uint32_t*)(buffer+i);
+          b2Used += 4;
+        }
+        
+        int n = write(p[1], b2, b2Used);
+          
+        if (n < 1)
+          break;
+
+        bufferUsed -= n*downFactor;
+        device_p -= n*downFactor;
+        memmove(buffer, buffer+n*downFactor, bufferUsed);
+      }
+    }
+
+    exit(0);
+  }
+
+  close(p[1]);
+  return p[0];
+}
 
 void setupMixer(double &loudness) {
   int device = open(mixer,O_WRONLY);
@@ -363,6 +462,8 @@ void openSound(SoundSource source, int inFrequency, char *dspName,
   ::source = source;
   ::inFrequency = inFrequency; 
   ::windowSize = 1;
+  pipeBufferUsed = 0;
+  pipeBufferDelay = 0;
   mixer = mixerName;
 
   if (source == SourceESD) {
@@ -370,7 +471,16 @@ void openSound(SoundSource source, int inFrequency, char *dspName,
     attempt(pipeIn = esd_monitor_stream(
 	    ESD_BITS16|ESD_STEREO|ESD_STREAM|ESD_PLAY,Frequency,0,PACKAGE),
             "connecting to EsounD");
-    fcntl(pipeIn, F_SETFL, O_NONBLOCK);
+
+    int esd;
+    attempt(esd = esd_open_sound(0), "querying esd latency");
+    attempt(pipeBufferDelay = esd_get_latency(esd_open_sound(0)), "querying esd latency");
+    esd_close(esd);
+
+    pipeBufferDelay = int( double(pipeBufferDelay) * Frequency * 2 / 44100 );
+    // there should be an extra factor of two here... but it looks wrong
+    // if i put it in... hmm
+    
 #endif
   } else {
     downFactor = inFrequency / Frequency; 
@@ -379,7 +489,7 @@ void openSound(SoundSource source, int inFrequency, char *dspName,
   
     int format, stereo, fragment, fqc;
   
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(_FreeBSD_kernel__)
     attempt(device = open(dspName,O_WRONLY),"opening dsp device",true);
     format = SOUNDFORMAT;
     attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format",true);
@@ -395,20 +505,17 @@ void openSound(SoundSource source, int inFrequency, char *dspName,
     fqc = (source == SourcePipe ? inFrequency : Frequency);
     stereo = 1;
     
-    if (source == SourcePipe)
-      fragment = 0x00010000*(MAXWINDOWSIZE+1) + (LogSize-Overlap+1);
-    else
+    //if (source == SourcePipe)
+      //fragment = 0x00010000*(MAXWINDOWSIZE+1) + (LogSize-Overlap+1);
+    //else
       //Added extra fragments to allow recording overrun (9/7/98)
       //8 fragments of size 2*(2^(LogSize-Overlap+1)) bytes
-      fragment = 0x00080000 + (LogSize-Overlap+1); 
-    
-    
-    
-    
-    //Was 0x00010000 + m; 
-  
+    //  fragment = 0x00080000 + (LogSize-Overlap+1); 
+      
+    fragment = 0x0003000e;
     attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment",true);
-#ifndef __FreeBSD__
+    
+#if !defined (__FreeBSD__) && !defined(__FreeBSD_kernel__)
     attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format",true);
     if (format != SOUNDFORMAT) error("setting format (2)");
 #endif
@@ -416,104 +523,73 @@ void openSound(SoundSource source, int inFrequency, char *dspName,
     attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency",true);
   
     if (source == SourcePipe) {
-      dataIn = new short[NumSamples*2*downFactor*MAXWINDOWSIZE];
-      memset(dataIn,0,NumSamples*4*downFactor*MAXWINDOWSIZE);
-      pipeIn = dup(0);
-      close(0);
+      //dataIn = new int16_t[NumSamples*2*downFactor*MAXWINDOWSIZE];
+      //memset(dataIn,0,NumSamples*4*downFactor*MAXWINDOWSIZE);
+      //dataInAvailable = NumSamples*4*downFactor*windowSize;
+      //pipeIn = 0;//dup(0);
+
+      pipeIn = makePiper();
+    } else {
+      pipeIn = device;
     }
   }
      
-  data = new short[NumSamples*2];  
+  fcntl(pipeIn, F_SETFL, O_NONBLOCK);
+
+  data = new int16_t[NumSamples*2];  
   memset((char*)data,0,NumSamples*4);
 }
 
 void closeSound() {
   delete data;
-  if (source == SourcePipe) {
-    delete dataIn;
-    close(pipeIn);
-    close(device);
-  } else if (source == SourceESD) {
-    delete dataIn;
-    close(pipeIn);
-  } else
-    close(device);
-}
 
-int readWholeBlock(int pipe,char *dest,int length) {
-  while(length > 0) {
-    int result = read(pipe,dest,length);
-    if (result < 1)
-      return -1;
-    dest += result;
-    length -= result;
-  }
-  return 0;
+  close(pipeIn);
 }
 
 int getNextFragment(void) {
-  if (source == SourcePipe) {
-    static int lastTime = 0;
-    int nowTime;
-    timeval timeVal1, timeVal2;
+  // Linux wasn't designed for real time piping
+  // hence, this section is a bit hacked...
+  static int step = 4096;
 
-    gettimeofday(&timeVal1,0);
-    write(device, (char*)dataIn, NumSamples*4*downFactor*windowSize); 
-    gettimeofday(&timeVal2,0);
+  bool end = false, any = false;
 
-    nowTime = timeVal1.tv_usec + timeVal1.tv_sec * 1000000;
-    if (nowTime > lastTime) {
-      int optimumFrags =
-         int(double(nowTime-lastTime)*inFrequency/1000000.0/(NumSamples*downFactor))
-	     +1;
-      if (optimumFrags > MAXWINDOWSIZE)
-        optimumFrags = MAXWINDOWSIZE;
+  // This seems to be necessary. Not sure why.
+  usleep(1000);
 
-      windowSize = optimumFrags;
-    }
-    
-    lastTime = timeVal2.tv_usec + timeVal2.tv_sec * 1000000;
-  
-    if (readWholeBlock(pipeIn, ((char*)dataIn), NumSamples*4*downFactor*windowSize) == -1)
-      return -1;
-    
-    int i,j;
-    for(i=0,j=0;i<NumSamples;i++,j+=downFactor) 
-      ((long*)data)[i] = ((long*)dataIn)[j]; 
-  } else if (source == SourceESD) {
-    for(;;) {
-      char buffer[NumSamples*4];
-      int n=0;
-      while(n<NumSamples) {
-        int result = read(pipeIn,buffer+n,NumSamples*4-n);
-	if (result < 1)
-	  break;
-	n += result;
-      }
-      
-      if (n) {
-        memmove((char*)data,(char*)data+n,NumSamples*4-n);
-	memcpy((char*)data+NumSamples*4-n,buffer,n);
-      } else
-        break;
-    }
-  } else {
-    int i;
-    count_info info;
-    if (-1 == ioctl(device,SNDCTL_DSP_GETIPTR,&info))
-      info.blocks = 1;
-    if (info.blocks > 8 || info.blocks < 1) /* Sanity check */
-      info.blocks = 1;
-
-    for(i=0;i<info.blocks;i++) {
-      if (RecSize != NumSamples)
-        memmove((char*)data,(char*)data+RecSize*4,(NumSamples-RecSize)*4);
-
-      attemptNoDie(
-        readWholeBlock(device,(char*)data+NumSamples*4-RecSize*4, RecSize*4),
-	"reading from soundcard", true);
-    }
+  // Read all data in pipe
+  while(pipeBufferUsed < BUFFERSIZE) {
+    int result = read(pipeIn,pipeBuffer+pipeBufferUsed,BUFFERSIZE-pipeBufferUsed);
+    if (result == 0)
+      end = true;
+    if (result < 1)
+      break;
+    pipeBufferUsed += result;
   }
-  return 0;
+  
+  //printf("%d\n",pipeBufferUsed);
+  //if (pipeBufferUsed == BUFFERSIZE) {
+  //    delay += 10000;
+  //}
+    
+  int eat = pipeBufferUsed - pipeBufferDelay;
+
+  if (eat < step && step > 256) step -= 128;
+  else if (eat > step * 16) step += 128;
+
+  if (eat > 0) {
+    if (eat > step) eat = step;
+
+    if (eat > NumSamples*4)
+      memcpy((char*)data, pipeBuffer+eat-NumSamples*4, NumSamples*4);
+    else {
+      memmove((char*)data,(char*)data+eat,NumSamples*4-eat);
+      memcpy((char*)data+NumSamples*4-eat,pipeBuffer,eat);
+    }
+
+    pipeBufferUsed -= eat;
+    memmove(pipeBuffer,pipeBuffer+eat,pipeBufferUsed);
+  }
+
+  return end && eat <= 0 ? -1 : 0;
 }
 

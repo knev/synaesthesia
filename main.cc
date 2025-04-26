@@ -38,7 +38,7 @@
 
 BaseScreen *screen;
 
-volatile sampleType *data;
+sampleType *data;
 
 int outWidth, outHeight;
 Bitmap<unsigned short> outputBmp, lastOutputBmp, lastLastOutputBmp;
@@ -92,13 +92,13 @@ void setStateToDefaults() {
   fadeMode = Stars;
   pointsAreDiamonds = true;
 
-  brightnessTwiddler = 0.33; //0.125; 
-  starSize = 0.125; 
+  brightnessTwiddler = 0.3;
+  starSize = 0.5; 
 
   fgRedSlider=0.0;
   fgGreenSlider=0.5;
-  bgRedSlider=1.0;
-  bgGreenSlider=0.2;
+  bgRedSlider=0.75;
+  bgGreenSlider=0.4;
 }
 
 bool loadConfig() {
@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
            "  <another program> |synaesthesia pipe <frequency>\n"
 	   "    - send output of program to sound card as well as displaying it.\n"
 	   "      (must be 16-bit stereo sound)\n"
-	   "    example: nice mpg123 -s file.mp3 |synaesthesia pipe 44100\n\n"
+	   "    example: mpg123 -s file.mp3 |synaesthesia pipe 44100\n\n"
 	   "The following optional flags may be used\n"
 
 #if HAVE_SDL
@@ -252,8 +252,7 @@ int main(int argc, char **argv) {
 	   "     --fullscreen   try to take over the whole screen\n"
 	   "     --width nnn    make the window this wide\n"
 	   "     --height nnn   make the window this high\n\n"
-	   "  Moving the mouse will reveal a control-bar that may be used to\n"
-	   "  control the CD and to exit the program.\n\n"
+           "For more information, see http://logarithmic.net/pfh/Synaesthesia\n\n"
 	   "Enjoy!\n"
 	   );
     return 1;

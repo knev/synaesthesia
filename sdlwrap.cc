@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <string.h>
 #include "syna.h"
@@ -32,27 +33,40 @@
 #include "SDL.h"
 
 static SDL_Surface *surface;
+static SDL_Color sdlPalette[256];
+static bool fullscreen;
+static int scaling; //currently only supports 1, 2
 
-SDL_Surface *CreateScreen(Uint16 w, Uint16 h, Uint8 bpp, Uint32 flags)
-{
-  SDL_Surface *screen;
+static void createSurface() {
+  Uint32 videoflags = SDL_HWSURFACE | SDL_DOUBLEBUF |
+                      SDL_RESIZABLE | (fullscreen?SDL_FULLSCREEN:0);
 
-  /* Set the video mode */
-  screen = SDL_SetVideoMode(w, h, bpp, flags);
-  if ( screen == NULL ) {
-    //fprintf(stderr, "Couldn't set display mode: %s\n",
-    //          SDL_GetError());
-    return(NULL);
+
+  /* Get available fullscreen modes */
+  SDL_Rect **modes = SDL_ListModes(0, videoflags);
+
+  bool any = false;
+
+  if(modes == (SDL_Rect **)-1){
+    /* All resolutions ok */
+    any = true;
+  } else {
+    /* Is there a resolution that will fit the display nicely */
+    for(int i=0;modes[i];i++)
+      if (modes[i]->w < outWidth*2 || modes[i]->h < outHeight*2)
+        any = true;
   }
-  //fprintf(stderr, "Screen is in %s mode\n",
-  //  (screen->flags & SDL_FULLSCREEN) ? "fullscreen" : "windowed");
 
-  return(screen);
+  scaling = (any?1:2); 
+               
+  surface = SDL_SetVideoMode(outWidth*scaling, outHeight*scaling, 8, videoflags);
+  SDL_SetColors(surface, sdlPalette, 0, 256);
+
+  if (!surface)
+    error("setting video mode");
 }
   
 void SdlScreen::setPalette(unsigned char *palette) {
-  SDL_Color sdlPalette[256];
-
   for(int i=0;i<256;i++) {
     sdlPalette[i].r = palette[i*3+0];
     sdlPalette[i].g = palette[i*3+1];
@@ -66,6 +80,10 @@ bool SdlScreen::init(int xHint,int yHint,int width,int height,bool fullscreen)
 {
   Uint32 videoflags;
 
+  outWidth = width;
+  outHeight = height;
+  ::fullscreen = fullscreen;
+
   /* Initialize SDL */
   if ( SDL_Init(SDL_INIT_VIDEO) < 0 ) {
     char str[1000];
@@ -75,16 +93,7 @@ bool SdlScreen::init(int xHint,int yHint,int width,int height,bool fullscreen)
 
   SDL_WM_SetCaption("Synaesthesia","synaesthesia");
 
-  /* See if we try to get a hardware colormap */
-  videoflags = SDL_SWSURFACE | (fullscreen?SDL_FULLSCREEN:0);
-
-  surface = CreateScreen(width, height, 8, videoflags);
-  if ( surface == NULL ) {
-    error("requesting screen dimensions");
-  }
-
-  outWidth = width;
-  outHeight = height;
+  createSurface();
 
   SDL_EnableUNICODE(1);
   SDL_ShowCursor(0);
@@ -96,8 +105,14 @@ void SdlScreen::end(void) {
   SDL_Quit();
 }
 
+void SdlScreen::toggleFullScreen(void) {
+  fullscreen = !fullscreen;
+  createSurface();
+}
+
 void SdlScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {    
   SDL_Event event;
+  bool resized = false;
  
   keyHit = 0;
   
@@ -109,13 +124,19 @@ void SdlScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyH
           mouseButtons |= 1 << event.button.button;
         else	
           mouseButtons &= ~( 1 << event.button.button );
-        mouseX = event.button.x;
-        mouseY = event.button.y;
+        mouseX = event.button.x / scaling;
+        mouseY = event.button.y / scaling;
 	break;
       case SDL_MOUSEMOTION :
-        mouseX = event.motion.x;
-        mouseY = event.motion.y;
+        mouseX = event.motion.x / scaling;
+        mouseY = event.motion.y / scaling;
 	break;
+      case SDL_ACTIVEEVENT :
+        /* Lost focus, hide mouse */
+        if (!event.active.gain) {
+          mouseX = outWidth;
+          mouseY = outHeight;
+        }
       case SDL_KEYDOWN:
         ///* Ignore key releases */
         //if ( event.key.state == SDL_RELEASED ) {
@@ -132,6 +153,11 @@ void SdlScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyH
 
 	keyHit = event.key.keysym.unicode;
 	return;
+      case SDL_VIDEORESIZE:
+        event.resize.w &= ~3;
+        allocOutput(event.resize.w,event.resize.h);
+        createSurface();
+        break;
       case SDL_QUIT:
         keyHit = 'q';        
         return;
@@ -141,50 +167,71 @@ void SdlScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyH
   }
 }
 
-int SdlScreen::sizeUpdate(void) { return 0; }
-
 void SdlScreen::show(void) { 
   attempt(SDL_LockSurface(surface),"locking screen for output.");
 
-  register unsigned long *ptr2 = (unsigned long*)output;
-  unsigned long *ptr1 = (unsigned long*)( surface->pixels );
-  int i = outWidth*outHeight/4;
+  if (scaling == 1) {
+    register uint32_t *ptr2 = (uint32_t*)output;
+    uint32_t *ptr1 = (uint32_t*)( surface->pixels );
+    int i = outWidth*outHeight/sizeof(*ptr2);
 
-  do {
-    // Asger Alstrup Nielsen's (alstrup@diku.dk)
-    // optimized 32 bit screen loop
-    register unsigned int const r1 = *(ptr2++);
-    register unsigned int const r2 = *(ptr2++);
+    do {
+      // Asger Alstrup Nielsen's (alstrup@diku.dk)
+      // optimized 32 bit screen loop
+      register unsigned int const r1 = *(ptr2++);
+      register unsigned int const r2 = *(ptr2++);
+    
+      //if (r1 || r2) {
+  #ifdef LITTLEENDIAN
+        register unsigned int const v = 
+            ((r1 & 0x000000f0ul) >> 4)
+          | ((r1 & 0x0000f000ul) >> 8)
+          | ((r1 & 0x00f00000ul) >> 12)
+          | ((r1 & 0xf0000000ul) >> 16);
+        *(ptr1++) = v | 
+          ( ((r2 & 0x000000f0ul) << 12)
+          | ((r2 & 0x0000f000ul) << 8)
+          | ((r2 & 0x00f00000ul) << 4)
+          | ((r2 & 0xf0000000ul)));
+  #else
+        register unsigned int const v = 
+            ((r2 & 0x000000f0ul) >> 4)
+          | ((r2 & 0x0000f000ul) >> 8)
+          | ((r2 & 0x00f00000ul) >> 12)
+          | ((r2 & 0xf0000000ul) >> 16);
+        *(ptr1++) = v | 
+          ( ((r1 & 0x000000f0ul) << 12)
+          | ((r1 & 0x0000f000ul) << 8)
+          | ((r1 & 0x00f00000ul) << 4)
+          | ((r1 & 0xf0000000ul)));
+  #endif
+      //} else ptr1++;
+    } while (--i); 
   
-    //if (r1 || r2) {
-#ifdef LITTLEENDIAN
-      register unsigned int const v = 
-          ((r1 & 0x000000f0ul) >> 4)
-        | ((r1 & 0x0000f000ul) >> 8)
-        | ((r1 & 0x00f00000ul) >> 12)
-        | ((r1 & 0xf0000000ul) >> 16);
-      *(ptr1++) = v | 
-        ( ((r2 & 0x000000f0ul) << 12)
-        | ((r2 & 0x0000f000ul) << 8)
-        | ((r2 & 0x00f00000ul) << 4)
-        | ((r2 & 0xf0000000ul)));
-#else
-      register unsigned int const v = 
-          ((r2 & 0x000000f0ul) >> 4)
-        | ((r2 & 0x0000f000ul) >> 8)
-        | ((r2 & 0x00f00000ul) >> 12)
-        | ((r2 & 0xf0000000ul) >> 16);
-      *(ptr1++) = v | 
-        ( ((r1 & 0x000000f0ul) << 12)
-        | ((r1 & 0x0000f000ul) << 8)
-        | ((r1 & 0x00f00000ul) << 4)
-        | ((r1 & 0xf0000000ul)));
-#endif
-    //} else ptr1++;
-  } while (--i); 
+  } else {
+    // SDL has no standard image scaling routine (!)
+    uint8_t *pixels = (uint8_t*)(surface->pixels);
+    for(int y=0;y<outHeight;y++) {
+      uint32_t *p1 = (uint32_t*)(output+y*outWidth*2);
+      uint32_t *p2 = (uint32_t*)(pixels+y*2*outWidth*2);
+      uint32_t *p3 = (uint32_t*)(pixels+(y*2+1)*outWidth*2);
+      for(int x=0;x<outWidth;x+=2) {
+        uint32_t v = *(p1++);
+        v = ((v&0x000000f0) >> 4)
+          | ((v&0x0000f000) >> 8)
+          | ((v&0x00f00000) >> 4)
+          | ((v&0xf0000000) >> 8);
+        v |= v<<8;
+        *(p2++) = v;
+        *(p3++) = v;
+      }
+    }
+  }
 
   SDL_UnlockSurface(surface);
-  SDL_UpdateRect(surface, 0, 0, 0, 0);
+
+  //SDL_UpdateRect(surface, 0, 0, 0, 0);
+  SDL_Flip(surface);
 }
 
 #endif

@@ -34,6 +34,7 @@
 #include <X11/cursorfont.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #ifndef __FreeBSD__
 #include <malloc.h>
@@ -71,7 +72,7 @@ void draw_screen(xdisplay * d)
 {
     switch (d->image[0]->bits_per_pixel) {
     case 16:{
-	    unsigned short *de;
+	    uint16_t *de;
 	    unsigned char *s;
 	    unsigned char *e;
 	    for (s = (unsigned char *) d->vbuffs[d->current],
@@ -105,12 +106,12 @@ void draw_screen(xdisplay * d)
             break;	
 	}
     case 32:{
-	    unsigned long *de;
+	    uint32_t *de;
 	    unsigned char *s;
 	    unsigned char *e;
 	    for (s = (unsigned char *) d->vbuffs[d->current],
 		 e = (unsigned char *) d->vbuffs[d->current] + (d->linewidth * d->height),
-		 de = (unsigned long *) d->data[d->current]; s < e; s += 8, de += 8)
+		 de = (uint32_t *) d->data[d->current]; s < e; s += 8, de += 8)
 		*de = d->pixels[*s],
 		    *(de + 1) = d->pixels[*(s + 1)],
 		    *(de + 2) = d->pixels[*(s + 2)],

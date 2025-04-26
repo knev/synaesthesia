@@ -23,6 +23,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "syna.h"
 
@@ -104,23 +105,12 @@ void XScreen::end() {
   xfree_display(d);
 }
 
-int XScreen::sizeUpdate() {
-  int newWidth,newHeight;
-  if (xsize_update(d,&newWidth,&newHeight)) {
-    if (newWidth == outWidth && newHeight == outHeight)
-      return 0;
-    //delete[] output;
-    //outWidth = newWidth;
-    //outHeight = newHeight;
-    //output = new unsigned char [outWidth*outHeight*2];
-    //memset(output,32,outWidth*outHeight*2);
-    allocOutput(newWidth,newHeight);
-    return 1;
-  }
-  return 0;
-}
-
 void XScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
+  int newWidth,newHeight;
+  if (xsize_update(d,&newWidth,&newHeight))
+    if (newWidth != outWidth || newHeight != outHeight)
+      allocOutput(newWidth,newHeight);
+
   xmouse_update(d);
   mouseX = xmouse_x(d);
   mouseY = xmouse_y(d);
@@ -129,24 +119,24 @@ void XScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit
 }
  
 void XScreen::show(void) { 
-  register unsigned long *ptr2 = (unsigned long*)output;
-  unsigned long *ptr1 = (unsigned long*)d->back;
-  int i = outWidth*outHeight/4;
+  register uint32_t *ptr2 = (uint32_t*)output;
+  uint32_t *ptr1 = (uint32_t*)d->back;
+  int i = outWidth*outHeight/sizeof(uint32_t);
   if (lowColor)
     do {
-      register unsigned int const r1 = *(ptr2++);
-      register unsigned int const r2 = *(ptr2++);
+      register uint32_t const r1 = *(ptr2++);
+      register uint32_t const r2 = *(ptr2++);
     
       //if (r1 || r2) {
 #ifdef LITTLEENDIAN
-        register unsigned int const v = 
+        register uint32_t const v = 
              mapping[((r1&0xe0ul)>>5)|((r1&0xe000ul)>>10)]
             |mapping[((r1&0xe00000ul)>>21)|((r1&0xe0000000ul)>>26)]*256U; 
         *(ptr1++) = v | 
              mapping[((r2&0xe0ul)>>5)|((r2&0xe000ul)>>10)]*65536U
             |mapping[((r2&0xe00000ul)>>21)|((r2&0xe0000000ul)>>26)]*16777216U; 
 #else
-        register unsigned int const v = 
+        register uint32_t const v = 
              mapping[((r2&0xe0ul)>>5)|((r2&0xe000ul)>>10)]
             |mapping[((r2&0xe00000ul)>>21)|((r2&0xe0000000ul)>>26)]*256U; 
         *(ptr1++) = v | 
@@ -159,12 +149,12 @@ void XScreen::show(void) {
     do {
       // Asger Alstrup Nielsen's (alstrup@diku.dk)
       // optimized 32 bit screen loop
-      register unsigned int const r1 = *(ptr2++);
-      register unsigned int const r2 = *(ptr2++);
+      register uint32_t const r1 = *(ptr2++);
+      register uint32_t const r2 = *(ptr2++);
     
       //if (r1 || r2) {
 #ifdef LITTLEENDIAN
-        register unsigned int const v = 
+        register uint32_t const v = 
             ((r1 & 0x000000f0ul) >> 4)
           | ((r1 & 0x0000f000ul) >> 8)
           | ((r1 & 0x00f00000ul) >> 12)
@@ -175,7 +165,7 @@ void XScreen::show(void) {
           | ((r2 & 0x00f00000ul) << 16 -12)
           | ((r2 & 0xf0000000ul) << 16 -16);
 #else
-        register unsigned int const v = 
+        register uint32_t const v = 
             ((r2 & 0x000000f0ul) >> 4)
           | ((r2 & 0x0000f000ul) >> 8)
           | ((r2 & 0x00f00000ul) >> 12)

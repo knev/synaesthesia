@@ -1,12 +1,12 @@
-SYNAESTHESIA v2.1
+SYNAESTHESIA v2.4                  http://logarithmic.net/pfh/Synaesthesia
 
 Introduction
 ============
 
-This is a program for representing sounds visually.  It goes beyond
-the usual oscilliscope style program by combining an FFT and stereo
-positioning information to give a two dimensional display. Some of the
-shapes I have observed are:
+Synaesthesia is a program for representing sounds visually.  It goes
+beyond the usual oscilliscope style program by combining an FFT and
+stereo positioning information to give a two dimensional display. Some
+of the shapes I have observed are:
   * Drums: clouds of color, fairly high
   * Clean guitar: several horizontal lines, low down
   * Rough guitar: a cloud, low down
@@ -15,30 +15,33 @@ shapes I have observed are:
   * Voice: A vertical line with some internal structure
   * Synthesizer: All kinds of weird shapes!
 
-Synaesthesia can run in a window in X or full screen using SVGAlib or
-Simple DirectMedia Layer. It can take input from a CD, line input,
-EsounD, or piped from another program.
+Synaesthesia represents frequency as the vertical position on screen,
+and stereo position as the horizontal position. It can also understand
+surround sound encoded music, and shows ambient noise in a different
+color.
 
-The display represents frequency as vertical position on screen,
-left-right position as left-right position on screen. It can also
-understand surround sound encoded music, and shows ambient noise in
-a different color.
+Synaesthesia can run in a window in X, or full screen using SVGAlib,
+or either using Simple DirectMedia Layer (SDL). Use of the SDL is
+recommended.
 
-You can use Synaesthesia as a fully functional CD player, suitable for
-use while working.
+It can take input from a CD, line input, EsounD, or piped from another
+program. As of version 2.2, EsounD support is much improved. For example,
+Synaesthesia works well with XMMS if both use EsounD.
+
 
 Usage
 =====
 
 Synaesthesia should work on Linux and BSD systems. (Note: I don't have
 access to a BSD system myself, I have to rely on patches -- if it doesn't
-work, please tell me!) LinuxPPC users may have to use the pipe or EsounD
-modes rather than taking sound input from the CD player, as I believe
-sound recording is not yet implemented.
+work, please tell me!)
 
-If you want to use the Simple DirectMedia Layer with Synaesthesia,
-install the relevant packages for your distribution, or get the source
-from http://www.libsdl.org/.
+For best results, first make sure you have installed the libraries and
+the header files for these: (on most systems, this means installing the
+appropriate "dev" packages)
+
+  * Simple DirectMedia Layer (SDL)
+  * EsounD (ESD)
 
 Compile Synaesthesia by typing
 
@@ -49,7 +52,7 @@ then install it by typing
 
   make install
 
-then you should be able to type 
+then you should be able to type
 
   synaesthesia
 
@@ -69,6 +72,7 @@ before using Synaesthesia in order to control the CD.
 Run Synaesthesia with no parameters for further information on how to 
 use it.
 
+
 Notes for code rippers
 ======================
 
@@ -77,7 +81,7 @@ If you want to, please do. (For example, you might want to add some
 snazzy visual effects to your favourite MP3 or CD player)
 
 The actual code to do the mapping from sound to visual display is
-all in core.cpp, it should be fairly easy to disentangle from other
+all in core.cc, it should be fairly easy to disentangle from other
 parts of the program. It does make reference to some globals defined
 in syna.h, namely the #defines LogSize (log2 of the sample size for each
 frame) and Brightness, data (which stores the sound input), outputBmp,
@@ -96,25 +100,33 @@ The normal way to use it would be:
     Display contents of outputBmp to screen
 
 There is a simple anti-aliased polygon drawing engine in the file
-polygon.h. sound.cpp contains code for driving the CD. xlib.c and
-xlibwrap.cpp contain code for setting up a window under X (originally
+polygon.h. sound.cc contains code for driving the CD. xlib.c and
+xlibwrap.cc contain code for setting up a window under X (originally
 ripped from the Xaos fractal viewer program :-) ).
+
 
 Authors
 =======
 
-This program is free. If you like it, or have any suggestions, please
-send me (Paul Harrison) an email (pfh@yoyo.cc.monash.edu.au).
+Feel free to email me me (Paul Harrison) at pfh@logarithmic.net with any
+suggestions, bug-reports, or better yet, patches.
 
-Thanks to Asger Alstrup Nielsen for many great suggestions, and for 
-writing optimized 32 bit loops for fading and drawing to screen.
+A number of other people have contributed to Synaesthesia:
 
-Thanks to Roger Knobbe for porting Synaesthesia to FreeBSD. 
+  Thanks to Asger Alstrup Nielsen for many great suggestions, and for 
+  writing optimized 32 bit loops for fading and drawing to screen.
 
-Thanks to Ben Gertzfield and Martin Mitchell for some small fixes to the
-CD controlling code. 
+  Thanks to Roger Knobbe for porting Synaesthesia to FreeBSD. 
 
-Thanks to Simon Budig for an improvement to the X code.
+  Thanks to Ben Gertzfield and Martin Mitchell for some small fixes to the
+  CD controlling code. 
+
+  Thanks to Simon Budig for an improvement to the X code.
+
+  Thanks to Devin Carraway for fixing Synaesthesia to work with non-32-bit
+  word machines.
+
+Synaesthesia is distributed under the GPL.
 
 Changes
 =======
@@ -140,5 +152,14 @@ Changes
       SDL version now sets title.
       Bug fixes: Old versions of gcc can't cope with some of the stuff
       I was doing with templates.
-
+2.2 - Works on machines with non-32-bit words (patch by Devin Carraway)
+      Pipe and ESD modes greatly improved: it now syncs properly to the music 
+        with ESD
+      Resizable window with SDL
+      Fixes to autoconf of SDL
+      Clicking on window toggles full screen in SDL
+      Automatic brightness compensation
+2.3 - Compiles with g++ 3.4
+      Tweaked sound code, should now work on fast computers
+2.4 - Applied a patch by Aurelien Jarno that fixes some FreeBSD problems
 

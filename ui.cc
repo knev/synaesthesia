@@ -3,6 +3,7 @@
 #include "syna.h"
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 void putChar(unsigned char character,int x,int y,int red,int blue) {
   unsigned short *ptr = ((unsigned short *)output) + x + y*outWidth;
@@ -53,13 +54,13 @@ struct Button : public UIObject {
           double _x, double _y, double scale, char &_hotKey, int &action) {
     polygonEngine.icon(
 	Icons[icon],
-	(bright ? 0x0202 : 0x0100),
+	(bright ? 0x0404 : 0x0200),
 	x*scale,y*scale,width*scale,height*scale);
 
     if (mouseOver && !passive)
       polygonEngine.icon(
   	  Icons[icon],
-	  0x0002,
+	  0x0004,
 	  (x-IconWidths[icon]*width/2)*scale,
 	  (y-height/2)*scale,width*scale*2,height*scale*2);
 
@@ -126,7 +127,7 @@ struct SliderBar : public UIObject {
       x*scale,y*scale,width*scale,height*scale);
     polygonEngine.icon(
       Icons[Slider],
-      0x0200,
+      0x0400,
       (x+*value*width-IconWidths[Slider]*height/2)*scale,
       y*scale,height*scale,height*scale);
 
@@ -137,7 +138,7 @@ struct SliderBar : public UIObject {
     
       polygonEngine.icon(
 	Icons[Selector],
-	0x0002,
+	0x0004,
 	(x+newValue*width-IconWidths[Selector]*height/2)*scale,
 	y*scale,height*scale,height*scale);
 
@@ -238,7 +239,8 @@ void setupPalette(double dummy=0.0) {
   fgRed = fgRedSlider;
   fgGreen = fgGreenSlider;
   fgBlue = 1.0 - MAX(fgRedSlider,fgGreenSlider);
-  scale = MAX(MAX(fgRed,fgGreen),fgBlue);
+  //scale = MAX(MAX(fgRed,fgGreen),fgBlue);
+  scale = (fgRed+fgGreen+fgBlue)/2.0;
   fgRed /= scale;
   fgGreen /= scale;
   fgBlue /= scale;
@@ -246,16 +248,41 @@ void setupPalette(double dummy=0.0) {
   bgRed = bgRedSlider;
   bgGreen = bgGreenSlider;
   bgBlue = 1.0 - MAX(bgRedSlider,bgGreenSlider);
-  scale = MAX(MAX(bgRed,bgGreen),bgBlue);
+  //scale = MAX(MAX(bgRed,bgGreen),bgBlue);
+  scale = (bgRed+bgGreen+bgBlue)/2.0;
   bgRed /= scale;
   bgGreen /= scale;
   bgBlue /= scale;
   
   for(i=0;i<256;i++) {
     int f = i&15, b = i/16;
-    palette[i*3+0] = PEAKIFY(b*bgRed*16+f*fgRed*16);
-    palette[i*3+1] = PEAKIFY(b*bgGreen*16+f*fgGreen*16);
-    palette[i*3+2] = PEAKIFY(b*bgBlue*16+f*fgBlue*16);
+    //palette[i*3+0] = PEAKIFY(b*bgRed*16+f*fgRed*16);
+    //palette[i*3+1] = PEAKIFY(b*bgGreen*16+f*fgGreen*16);
+    //palette[i*3+2] = PEAKIFY(b*bgBlue*16+f*fgBlue*16);
+
+    double red = b*bgRed*16+f*fgRed*16;
+    double green = b*bgGreen*16+f*fgGreen*16;
+    double blue = b*bgBlue*16+f*fgBlue*16;
+
+    double excess = 0.0;
+    for(int j=0;j<5;j++) {
+      red += excess / 3;
+      green += excess / 3;
+      blue += excess / 3;
+      excess = 0.0;
+      if (red > 255) { excess += red-255; red = 255; }
+      if (green > 255) { excess += green-255; green = 255; }
+      if (blue > 255) { excess += blue-255; blue = 255; }
+    }
+
+    double scale = (0.5 + (red+green+blue)/768.0) / 1.5;
+    red *= scale;
+    green *= scale;
+    blue *= scale;
+    
+    palette[i*3+0] = BOUND(int(red));
+    palette[i*3+1] = BOUND(int(green));
+    palette[i*3+2] = BOUND(int(blue));
   }
   screen->setPalette(palette);
 }
@@ -482,8 +509,7 @@ bool interfaceGo() {
   int action = NotASymbol;
   int oldButtons = mouseButtons;
   
-  screen->sizeUpdate();
-  screen->inputUpdate(mouseX,mouseY,mouseButtons,keyHit);
+  screen->inputUpdate(mouseX,mouseY,mouseButtons,keyHit); //may also resize output
 
   bool mouseClick = (mouseButtons && !oldButtons);
 
@@ -598,6 +624,13 @@ bool interfaceGo() {
     cdCheckCountDown = 100;
   } else
     cdCheckCountDown -= (countDown ? 10 : 1);
+
+  if (mouseClick && action == NotASymbol && !(visibleMask&~ALL)) {
+    screen->toggleFullScreen();
+    screen->inputUpdate(mouseX,mouseY,mouseButtons,keyHit);
+    lastX = mouseX;
+    lastY = mouseY;
+  }
 
   return quit;
 }

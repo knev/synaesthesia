@@ -1,5 +1,9 @@
 AC_INIT(main.cc)
-AM_INIT_AUTOMAKE(synaesthesia,2.1)
+
+dnl Detect the canonical host and target build environment
+AC_CANONICAL_SYSTEM
+
+AM_INIT_AUTOMAKE(synaesthesia,2.4)
 AM_CONFIG_HEADER(config.h)
 
 CXXFLAGS="-O4"
@@ -21,7 +25,7 @@ dnl Check for svgalib
 AC_CHECK_LIB(vga,vga_init)
 
 dnl Check for SDL
-SDL_VERSION=1.0.0
+SDL_VERSION=1.2.0
 AM_PATH_SDL($SDL_VERSION,
             AC_DEFINE(HAVE_SDL),
             :

@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
+#include <stdint.h>
 #include "syna.h"
 
 #if HAVE_LIBVGA
@@ -108,10 +109,6 @@ void SvgaScreen::end() {
   vga_setmode(TEXT);
 }
 
-int SvgaScreen::sizeUpdate() {
-  return 0;
-}
-
 void SvgaScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   mouse_update(); 
   mouseX = mouse_getx();
@@ -123,24 +120,24 @@ void SvgaScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &key
 }
 
 void SvgaScreen::show(void) {
-  register unsigned long *ptr2 = (unsigned long*)output;
-  unsigned long *ptr1 = (unsigned long*)scr;
-  int i = 320*200/4;
+  register uint32_t *ptr2 = (uint32_t*)output;
+  uint32_t *ptr1 = (uint32_t*)scr;
+  int i = 320*200/sizeof(uint32_t);
   // Asger Alstrup Nielsen's (alstrup@diku.dk)
   // optimized 32 bit screen loop
   do {
     //Original bytewize version:
     //unsigned char v = (*(ptr2++)&15*16);
     //*(ptr1++) = v|(*(ptr2++)>>4);
-    register unsigned int const r1 = *(ptr2++);
-    register unsigned int const r2 = *(ptr2++);
+    register uint32_t const r1 = *(ptr2++);
+    register uint32_t const r2 = *(ptr2++);
 
     //Fade will continue even after value > 16
     //thus black pixel will be written when values just > 0
     //thus no need to write true black
     //if (r1 || r2) {
 #ifdef LITTLEENDIAN
-      register unsigned int const v = 
+      register uint32_t const v = 
           ((r1 & 0x000000f0ul) >> 4)
         | ((r1 & 0x0000f000ul) >> 8)
         | ((r1 & 0x00f00000ul) >> 12)
@@ -151,7 +148,7 @@ void SvgaScreen::show(void) {
         | ((r2 & 0x00f00000ul) << 4)
         | ((r2 & 0xf0000000ul)));
 #else
-      register unsigned int const v = 
+      register uint32_t const v = 
           ((r2 & 0x000000f0ul) >> 4)
         | ((r2 & 0x0000f000ul) >> 8)
         | ((r2 & 0x00f00000ul) >> 12)

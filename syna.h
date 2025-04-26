@@ -29,10 +29,7 @@
 /*   For the incurably fiddle prone:   */
 
 /* log2 of sample size */
-#define LogSize 9 
-
-/* overlap amount between samples. Set to 1 or 2 if you have a fast computer */
-#define Overlap 1 
+#define LogSize 10 //was 9 
 
 /* Brightness */
 #define Brightness 150
@@ -40,10 +37,10 @@
 /* Sample frequency*/
 #define Frequency 22050
 
-/***************************************/
+#define DefaultWidth  200
+#define DefaultHeight 200
 
-#define DefaultWidth  260
-#define DefaultHeight 260
+/***************************************/
 
 #define NumSamples (1<<LogSize)
 #define RecSize (1<<LogSize-Overlap)
@@ -85,16 +82,15 @@ struct BaseScreen {
   virtual bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen) = 0;
   virtual void setPalette(unsigned char *palette) = 0;
   virtual void end() = 0;
-  virtual int  sizeUpdate() = 0;
   virtual void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) = 0;
   virtual void show() = 0;
+  virtual void toggleFullScreen() { }
 };
 
 struct SvgaScreen : public BaseScreen {
   bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
   void setPalette(unsigned char *palette);
   void end();
-  int  sizeUpdate();
   void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
   void show();
 };
@@ -103,23 +99,22 @@ struct SdlScreen : public BaseScreen {
   bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
   void setPalette(unsigned char *palette);
   void end();
-  int  sizeUpdate();
   void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
   void show();
+  void toggleFullScreen();
 };
 
 struct XScreen : public BaseScreen {
   bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
   void setPalette(unsigned char *palette);
   void end();
-  int  sizeUpdate();
   void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
   void show();
 };
 
 /* core */
 extern BaseScreen *screen;
-extern volatile sampleType *data;
+extern sampleType *data;
 extern Bitmap<unsigned short> outputBmp, lastOutputBmp, lastLastOutputBmp;
 #define output ((unsigned char*)outputBmp.data)
 #define lastOutput ((unsigned char*)lastOutputBmp.data)
