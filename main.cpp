@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
   
 
   if (argc == 1) {
-    printf("\nSYNAESTHESIA v1.4\n\n"
+    printf("\nSYNAESTHESIA\n\n"
            "Usage:\n\n"
            "  " PROGNAME " cd\n    - listen to a CD\n\n"
            "  " PROGNAME " line\n    - listen to line input\n\n"

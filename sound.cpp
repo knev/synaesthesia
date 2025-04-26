@@ -34,9 +34,17 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
+#ifndef __FreeBSD__
 #include <linux/soundcard.h>
 #include <linux/cdrom.h>
-#include <linux/ucdrom.h>
+//#include <linux/ucdrom.h>
+#else
+#include <machine/soundcard.h>
+#include <sys/cdio.h>
+#define CDROM_LEADOUT 0xAA
+#define CD_FRAMES 75 /* frames per second */
+#define CDROM_DATA_TRACK 0x4
+#endif
 #include <time.h>
 
 #include <stdlib.h>
@@ -73,21 +81,40 @@ void getTrackInfo(void) {
   trackFrame = 0;
   trackCount  = 0;
 
+#ifndef __FreeBSD__
   cdrom_tochdr cdTochdr;
   if (-1 == ioctl(cdDevice, CDROMREADTOCHDR, &cdTochdr))
+#else
+  ioc_toc_header cdTochdr;
+  if (-1 == ioctl(cdDevice, CDIOREADTOCHEADER, (char *)&cdTochdr))
+#endif
      return;
+#ifndef __FreeBSD__
   trackCount = cdTochdr.cdth_trk1;
+#else
+  trackCount = cdTochdr.ending_track - cdTochdr.starting_track + 1;
+#endif
 
   int i;
   trackFrame = new int[trackCount+1];
   for(i=trackCount;i>=0;i--) {
+#ifndef __FreeBSD__
     cdrom_tocentry cdTocentry;
     cdTocentry.cdte_format = CDROM_MSF;
     cdTocentry.cdte_track  = (i == trackCount ? CDROM_LEADOUT : i+1);
+#else
+    cd_toc_entry cdTocentry;
+    struct ioc_read_toc_entry t;
+    t.address_format = CD_MSF_FORMAT;
+    t.starting_track = (i == trackCount ? CDROM_LEADOUT : i+1);
+    t.data_len = sizeof(struct cd_toc_entry);
+    t.data = &cdTocentry;
+#endif
 
     //Bug fix: thanks to Ben Gertzfield  (9/7/98)
     //Leadout track is sometimes reported as data.
     //Added check for this.
+#ifndef __FreeBSD__
     if (-1 == ioctl(cdDevice, CDROMREADTOCENTRY, & cdTocentry) ||
         (i != trackCount && (cdTocentry.cdte_ctrl & CDROM_DATA_TRACK)))
       trackFrame[i] = (i==trackCount?0:trackFrame[i+1]);
@@ -95,6 +122,15 @@ void getTrackInfo(void) {
       trackFrame[i] = cdTocentry.cdte_addr.msf.minute*60*CD_FRAMES+
                       cdTocentry.cdte_addr.msf.second*CD_FRAMES+
                       cdTocentry.cdte_addr.msf.frame;
+#else
+    if ((ioctl(cdDevice, CDIOREADTOCENTRYS, (char *) &t) == -1) ||
+     (i != trackCount && (cdTocentry.control & CDROM_DATA_TRACK)))
+	     trackFrame[i] = (i==trackCount?0:trackFrame[i+1]);
+    else
+	trackFrame[i] = cdTocentry.addr.msf.minute*60*CD_FRAMES+
+			    cdTocentry.addr.msf.second*CD_FRAMES+
+			    cdTocentry.addr.msf.frame;
+#endif
   }
 }
 
@@ -111,7 +147,11 @@ int cdGetTrackFrame(int track) {
 }
 
 void cdPlay(int frame, int endFrame) {
+#ifndef __FreeBSD__
   cdrom_msf msf;
+#else
+  struct ioc_play_msf msf;
+#endif
   if (frame < 1) frame = 1;
   if (endFrame < 1) endFrame = trackFrame[trackCount];
 
@@ -119,40 +159,81 @@ void cdPlay(int frame, int endFrame) {
   // (Sybren Stuvel)
   cdStop();
   
+#ifndef __FreeBSD__
   msf.cdmsf_min0 = frame / (60*CD_FRAMES);
   msf.cdmsf_sec0 = frame / CD_FRAMES % 60;
   msf.cdmsf_frame0 = frame % CD_FRAMES;
+#else
+  msf.start_m = frame / (60*CD_FRAMES);
+  msf.start_s = frame / CD_FRAMES % 60;
+  msf.start_f = frame % CD_FRAMES;
+#endif
 
   //Bug fix: thanks to Martin Mitchell
   //An out by one error that affects some CD players. 
   //Have to use endFrame-1 rather than endFrame (9/7/98)
+#ifndef __FreeBSD__
   msf.cdmsf_min1 = (endFrame-1) / (60*CD_FRAMES);
   msf.cdmsf_sec1 = (endFrame-1) / CD_FRAMES % 60;
   msf.cdmsf_frame1 = (endFrame-1) % CD_FRAMES;
   attemptNoDie(ioctl(cdDevice, CDROMPLAYMSF, &msf),"playing CD");
+#else
+  msf.end_m = (endFrame-1) / (60*CD_FRAMES);
+  msf.end_s = (endFrame-1) / CD_FRAMES % 60;
+  msf.end_f = (endFrame-1) % CD_FRAMES;
+  attemptNoDie(ioctl(cdDevice, CDIOCPLAYMSF, (char *) &msf),"playing CD");
+#endif
 }
 
 void cdGetStatus(int &track, int &frames, SymbolID &state) {
+#ifndef __FreeBSD__
   cdrom_subchnl subchnl;
   subchnl.cdsc_format = CDROM_MSF;
   if (-1 == ioctl(cdDevice, CDROMSUBCHNL, &subchnl)) {
+#else
+  ioc_read_subchannel subchnl;
+  struct cd_sub_channel_info info;
+
+  subchnl.data = &info;
+  subchnl.data_len = sizeof (info);
+  subchnl.address_format = CD_MSF_FORMAT;
+  subchnl.data_format = CD_CURRENT_POSITION;
+  
+  if (-1 == ioctl(cdDevice, CDIOCREADSUBCHANNEL, (char *) &subchnl)) {
+#endif
     track = 1; 
     frames  = 0;
     state = (state == Open ? Open : NoCD); /* ? */
     return;
   }
+#ifndef __FreeBSD__
   track = subchnl.cdsc_trk;
   frames  = subchnl.cdsc_reladdr.msf.minute*60*CD_FRAMES+
             subchnl.cdsc_reladdr.msf.second*CD_FRAMES+
             subchnl.cdsc_reladdr.msf.frame; 
+#else
+  track = subchnl.data->what.position.track_number;
+  frames  = subchnl.data->what.position.reladdr.msf.minute*60*CD_FRAMES+
+		subchnl.data->what.position.reladdr.msf.second*CD_FRAMES+
+		subchnl.data->what.position.reladdr.msf.frame; 
+#endif
   
   SymbolID oldState = state;
+#ifndef __FreeBSD__
   switch(subchnl.cdsc_audiostatus) {
     case CDROM_AUDIO_PAUSED    : state = Pause; break;
     case CDROM_AUDIO_PLAY      : state = Play; break;
     case CDROM_AUDIO_COMPLETED : state = Stop; break;
     case CDROM_AUDIO_NO_STATUS : state = Stop; break;
     case CDROM_AUDIO_INVALID   : state = Stop; break;
+#else
+  switch(subchnl.data->header.audio_status) {
+    case CD_AS_PLAY_PAUSED	     : state = Pause; break;
+    case CD_AS_PLAY_IN_PROGRESS    : state = Play; break;
+    case CD_AS_PLAY_COMPLETED 	     : state = Stop; break;
+    case CD_AS_NO_STATUS	     : state = Stop; break;
+    case CD_AS_AUDIO_INVALID       : state = Stop; break;
+#endif
     default : state = NoCD; break;
   }
 
@@ -169,19 +250,39 @@ void cdGetStatus(int &track, int &frames, SymbolID &state) {
 
 void cdStop(void) {
   //attemptNoDie(ioctl(cdDevice, CDROMSTOP),"stopping CD");
+#ifndef __FreeBSD__
   ioctl(cdDevice, CDROMSTOP);
+#else
+  ioctl(cdDevice, CDIOCSTOP);
+#endif
 }
 void cdPause(void) {
+#ifndef __FreeBSD__
   attemptNoDie(ioctl(cdDevice, CDROMPAUSE),"pausing CD");
+#else
+  attemptNoDie(ioctl(cdDevice, CDIOCPAUSE),"pausing CD");
+#endif
 }
 void cdResume(void) {
+#ifndef __FreeBSD__
   attemptNoDie(ioctl(cdDevice, CDROMRESUME),"resuming CD");
+#else
+  attemptNoDie(ioctl(cdDevice, CDIOCRESUME),"resuming CD");
+#endif
 }
 void cdEject(void) {
+#ifndef __FreeBSD__
   attemptNoDie(ioctl(cdDevice, CDROMEJECT),"ejecting CD");
+#else
+  attemptNoDie(ioctl(cdDevice, CDIOCEJECT),"ejecting CD");
+#endif
 }
 void cdCloseTray(void) {
+#ifndef __FreeBSD__
   attemptNoDie(ioctl(cdDevice, CDROMCLOSETRAY),"ejecting CD");
+#else
+  attemptNoDie(ioctl(cdDevice, CDIOCCLOSE),"ejecting CD");
+#endif
 }
 
 /* Sound Recording ================================================= */
@@ -249,6 +350,13 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
 
   int format, stereo, fragment, fqc;
 
+#ifdef __FreeBSD__
+  attempt(device = open(dspName,O_WRONLY),"opening dsp device");
+  format = AFMT_S16_LE;
+  attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
+  if (format != AFMT_S16_LE) error("setting format (2)");
+  close(device);
+#endif
   if (source == SourcePipe)
     attempt(device = open(dspName,O_WRONLY),"opening dsp device");
   else
@@ -282,8 +390,10 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   //Was 0x00010000 + m; 
 
   attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment");
+#ifndef __FreeBSD__
   attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
   if (format != AFMT_S16_LE) error("setting format (2)");
+#endif
   attempt(ioctl(device,SNDCTL_DSP_STEREO,&stereo),"setting stereo");
   attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency");
    

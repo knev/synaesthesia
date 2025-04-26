@@ -1,4 +1,4 @@
-SYNAESTHESIA v1.4
+SYNAESTHESIA v1.6
 
 Introduction
 ============
@@ -22,23 +22,33 @@ of the interface. The intention is to make Synaesthesia a fully functional
 CD player, suitable for use while working.
 
 Version 1.4 adds support for play lists and viewing recorded samples.
-Support for the Simple DirectMedia Layer library has also been added
-(http://www.devolution.com/~slouken/SDL) in preperation for a Windoze port
-and partly just because its a great graphics library.
+Support for the Simple DirectMedia Layer library has also been added.
+(http://www.devolution.com/~slouken/SDL) 
+
+Version 1.6 adds support for FreeBSD, as well as better keyboard support.
 
 Usage
 =====
 
-Synaesthesia should compile on Linux systems.  Compile 
-Synaesthesia by typing "make" then following the instructions displayed.
+Synaesthesia should compile on Linux and FreeBSD systems. There is also
+a Windows version, available from 
+ http://yoyo.cc.monash.edu.au/~pfh/synaesthesia.html 
+ 
+Compile Synaesthesia by typing "make" then following the instructions 
+displayed.
 
 You will need to run Synaesthesia as root if you compiled it with
 svgalib. Other varieties can be run by any user providing you provide 
 permissions on /dev/dsp, /dev/cdrom, and /dev/mixer.
 
 Synaesthesia creates a configuration file you can edit, named
-~/.synaesthesia.  You can edit this to set the default brightness,
-volume and X-Window position and size.
+~/.synaesthesia.  You can edit this to set the device names of your sound
+card and CD-ROM drive, default brightness, volume and X-Window position 
+and size.
+
+Note to FreeBSD users: You will have to edit ~/.synaesthesia to set the
+appropriate device name for your CD-ROM drive (run the program with no
+parameters first in order to create this file).
 
 Run Synaesthesia with no parameters for further information on how to 
 use it.
@@ -53,12 +63,12 @@ send me (Paul Harrison) an email (pfh@yoyo.cc.monash.edu.au).
 Thanks to Asger Alstrup Nielsen for many great suggestions, and for 
 writing optimized 32 bit loops for fading and drawing to screen.
 
-Thanks to Roger Knobbe for porting Synaesthesia to FreeBSD. (untested)
-
 Thanks to Ben Gertzfield and Martin Mitchell for some small fixes to the
 CD controlling code. 
 
 Thanks to Simon Budig for an improvement to the X code.
+
+Many thanks to Sebestyen Zoltan for the FreeBSD port.
 
 Changes
 =======
@@ -72,4 +82,5 @@ Changes
       "Sound: Recording overrun" warnings.
       New command line options: play lists and piping.
       Support for SDL.
- 
+1.5 - Support for new SDL.
+1.6 - Support for keyboard, FreeBSD

@@ -30,7 +30,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef __FreeBSD__
 #include <malloc.h>
+#else
+#include <stdlib.h>
+#endif
 #include "xlib.h"
 #ifdef AMIGA
 #define XFlush(x) while(0)
