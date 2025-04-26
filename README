@@ -1,12 +1,12 @@
-SYNAESTHESIA v2.0
+SYNAESTHESIA v2.1
 
 Introduction
 ============
 
-This is a program for representing sounds visually from a CD or line
-input or piped from another program. It goes beyond the usual oscilliscope
-style program by combining an FFT and stereo positioning information to
-give a two dimensional display. Some of the shapes I have observed are:
+This is a program for representing sounds visually.  It goes beyond
+the usual oscilliscope style program by combining an FFT and stereo
+positioning information to give a two dimensional display. Some of the
+shapes I have observed are:
   * Drums: clouds of color, fairly high
   * Clean guitar: several horizontal lines, low down
   * Rough guitar: a cloud, low down
@@ -15,51 +15,51 @@ give a two dimensional display. Some of the shapes I have observed are:
   * Voice: A vertical line with some internal structure
   * Synthesizer: All kinds of weird shapes!
 
-Synaesthesia can run in a window in X or full screen using SVGAlib.
+Synaesthesia can run in a window in X or full screen using SVGAlib or
+Simple DirectMedia Layer. It can take input from a CD, line input,
+EsounD, or piped from another program.
 
-The display represents frequency as vertical position on screen, 
+The display represents frequency as vertical position on screen,
 left-right position as left-right position on screen. It can also
-understand surround sound encoded music, and shows ambient noise 
-in orange.
+understand surround sound encoded music, and shows ambient noise in
+a different color.
 
-X-Windows support was added in version 1.3, as well as a major redesign
-of the interface. You can use Synaesthesia as a fully functional
-CD player, suitable for use while working.
-
-There is command line support for play lists and piping from another
-program (such as an mp3 player).
+You can use Synaesthesia as a fully functional CD player, suitable for
+use while working.
 
 Usage
 =====
 
-Synaesthesia should work on Linux and BSD systems. (Note: I don't
-have access to a BSD system myself, I have to rely on patches -- if it
-doesn't work, please tell me!) LinuxPPC users may have to use the pipe
-mode rather than taking sound input from the CD player, as I believe
+Synaesthesia should work on Linux and BSD systems. (Note: I don't have
+access to a BSD system myself, I have to rely on patches -- if it doesn't
+work, please tell me!) LinuxPPC users may have to use the pipe or EsounD
+modes rather than taking sound input from the CD player, as I believe
 sound recording is not yet implemented.
+
+If you want to use the Simple DirectMedia Layer with Synaesthesia,
+install the relevant packages for your distribution, or get the source
+from http://www.libsdl.org/.
 
 Compile Synaesthesia by typing
 
+  ./configure
   make
   
 then install it by typing
 
   make install
 
-This will create three versions of Synaesthesia:
+then you should be able to type 
 
-  synaesthesia    - full screen SVGAlib version (Linux only)
-  xsynaesthesia   - Version that runs as a window in X
-  sdlsynaesthesia - Version that uses the SDL graphics library
+  synaesthesia
 
-If you want to use the SDL version, you need to get SDL from
-http://www.devolution.com/~slouken/SDL.
+to run the program.
 
 You will need to run Synaesthesia as root to run it full screen
 with SVGAlib. Other varieties can be run by any user providing you 
 provide permissions on /dev/dsp, /dev/cdrom, and /dev/mixer.
 
-Synaesthesia creates a configuration file, named ~/.synaesthesia,
+Synaesthesia creates a configuration file named ~/.synaesthesia
 to store settings such as brightness, color, and window size, as
 well as which devices to use to control sound input.
 
@@ -79,8 +79,8 @@ snazzy visual effects to your favourite MP3 or CD player)
 The actual code to do the mapping from sound to visual display is
 all in core.cpp, it should be fairly easy to disentangle from other
 parts of the program. It does make reference to some globals defined
-in syna.h, namely the #defines m (log2 of the sample size for each
-frame) and brightness, data (which stores the sound input), outputBmp,
+in syna.h, namely the #defines LogSize (log2 of the sample size for each
+frame) and Brightness, data (which stores the sound input), outputBmp,
 lastOutputBmp and lastLastOutputBmp (which hold the output), outWidth
 and outHeight (size of the bitmaps), and fadeMode, brightnessTwiddler,
 starSize and pointsAreDiamonds (various parameters affecting the display).
@@ -134,4 +134,11 @@ Changes
       Piping sound now longer requires the twiddle factor.
       Yet another interface redesign.
       Partial support for LinuxPPC (pipe mode only)
+2.1 - Autoconf support.
+      Esd support.
+      Some code cleanup, now only makes one binary.
+      SDL version now sets title.
+      Bug fixes: Old versions of gcc can't cope with some of the stuff
+      I was doing with templates.
+
 

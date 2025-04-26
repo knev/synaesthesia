@@ -1,11 +1,11 @@
 #include <string.h>
 
-template<class Pixel,int extra=0>
+template<class Pixel>
 struct Bitmap {
+  int width, height, extra;
   Pixel *data;
-  int width, height;
 
-  Bitmap() : data(0) { };
+  Bitmap(int e=0) : extra(e), data(0) { };
   ~Bitmap() { delete[] data; };
 
   void size(int w,int h) {
@@ -21,8 +21,10 @@ struct Bitmap {
   }
 };
 
-template<class Pixel, Pixel combine(Pixel a,Pixel b), int superSampleShift>
-struct PolygonEngine : public Bitmap<Pixel,1> {
+template<class Pixel, class Combiner, int superSampleShift>
+struct PolygonEngine : public Bitmap<Pixel> {
+  PolygonEngine() : Bitmap<Pixel>(1) { }
+  
 #define super (1<<superSampleShift)
   void apply(Pixel *dest) {
     Pixel sum=0;
@@ -31,7 +33,7 @@ struct PolygonEngine : public Bitmap<Pixel,1> {
     while(count--) {
       sum += *(src++);
       if (sum)
-        *dest = combine(sum,*dest);
+        *dest = Combiner::combine(sum,*dest);
       dest++;
     }
   }

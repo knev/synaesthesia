@@ -22,7 +22,9 @@
  *
  * Shamelessly ripped for use in xsynaesthesia
  */
-//#include "aconfig.h"
+#include "config.h"
+#ifndef X_DISPLAY_MISSING
+
 #define X11_DRIVER
 //#define MITSHM
 
@@ -776,4 +778,6 @@ unsigned int xmouse_buttons(xdisplay * d)
 {
     return d->mouse_buttons;
 }
+#endif
+
 #endif

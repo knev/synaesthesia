@@ -1,0 +1,20 @@
+/* config.h.in.  Generated automatically from configure.in by autoheader.  */
+
+/* Define if the X Window System is missing or not being used.  */
+#undef X_DISPLAY_MISSING
+
+/* Do we have the Simple Directmedia Layer library */
+#undef HAVE_SDL
+
+/* Define if you have the esd library (-lesd).  */
+#undef HAVE_LIBESD
+
+/* Define if you have the vga library (-lvga).  */
+#undef HAVE_LIBVGA
+
+/* Name of package */
+#undef PACKAGE
+
+/* Version number of package */
+#undef VERSION
+

@@ -36,21 +36,14 @@
 
 /* Config and globals =============================================== */
 
+BaseScreen *screen;
+
 volatile sampleType *data;
 
-//unsigned char *output=0, *lastOutput=0, *lastLastOutput=0;
 int outWidth, outHeight;
 Bitmap<unsigned short> outputBmp, lastOutputBmp, lastLastOutputBmp;
 
-//inline unsigned short combiner(unsigned short a,unsigned short b) {
-//  //Not that i want to give the compiler a hint or anything...
-//  unsigned char ah = a>>8, al = a&255, bh = b>>8, bl = b&255;
-//  if (bh > ah) ah = bh;
-//  if (bl > al) al = bl;
-//  return ah*256+al;
-//}
-
-PolygonEngine<unsigned short,combiner,2> polygonEngine;
+PolygonEngine<unsigned short,Combiner,2> polygonEngine;
 
 void allocOutput(int w,int h) {
   /*delete[] output;
@@ -112,8 +105,8 @@ bool loadConfig() {
   setStateToDefaults();
   windX=10;
   windY=30;
-  windWidth = 320;
-  windHeight = 200;
+  windWidth = DefaultWidth;
+  windHeight = DefaultHeight;
   strcpy(dspName, "/dev/dsp");
   strcpy(mixerName, "/dev/mixer");
   strcpy(cdromName, "/dev/cdrom");
@@ -153,9 +146,9 @@ bool loadConfig() {
     fclose(f);
   
     if (windWidth < 1)
-      windWidth = 320;
+      windWidth = DefaultWidth;
     if (windHeight < 1)
-      windHeight = 200;
+      windHeight = DefaultHeight;
     windWidth  &= ~3;
 
 #   define bound(v) \
@@ -219,21 +212,46 @@ void saveConfig() {
   }
 }
 
+void chomp(int &argc,char **argv,int argNum) {
+  argc--;
+  for(int i=argNum;i<argc;i++)
+    argv[i] = argv[i+1];
+}
+
 int main(int argc, char **argv) { 
   if (!loadConfig())
     saveConfig();
 
   if (argc == 1) {
-    printf("\nSYNAESTHESIA\n\n"
-           "Usage:\n\n"
-           "  " PROGNAME " cd\n    - listen to a CD\n\n"
-           "  " PROGNAME " line\n    - listen to line input\n\n"
-           "  " PROGNAME " <track> <track> <track>...\n"
-	   "    - play these CD tracks one after the other\n\n"
-           "  <another program> |" PROGNAME " pipe <frequency>\n"
+    printf("SYNAESTHESIA " VERSION "\n\n"
+           "Usage:\n"
+           "  synaesthesia cd\n    - listen to a CD\n"
+           "  synaesthesia line\n    - listen to line input\n"
+
+#if HAVE_LIBESD
+           "  synaesthesia esd\n    - listen to EsounD output (eg for use with XMMS)\n"
+#endif
+	   
+           "  synaesthesia <track> <track> <track>...\n"
+	   "    - play these CD tracks one after the other\n"
+           "  <another program> |synaesthesia pipe <frequency>\n"
 	   "    - send output of program to sound card as well as displaying it.\n"
 	   "      (must be 16-bit stereo sound)\n"
-	   "    example: nice mpg123 -s file.mp3 |" PROGNAME " pipe 44100\n\n"
+	   "    example: nice mpg123 -s file.mp3 |synaesthesia pipe 44100\n\n"
+	   "The following optional flags may be used\n"
+
+#if HAVE_SDL
+	   "     --use-sdl      force use of Simple DirectMedia Layer\n"
+#endif
+#ifndef X_DISPLAY_MISSING 
+	   "     --use-x        force use of X-Windows\n"
+#endif
+#if HAVE_LIBVGA
+	   "     --use-svga     force use of SVGALib\n"
+#endif
+	   "     --fullscreen   try to take over the whole screen\n"
+	   "     --width nnn    make the window this wide\n"
+	   "     --height nnn   make the window this high\n\n"
 	   "  Moving the mouse will reveal a control-bar that may be used to\n"
 	   "  control the CD and to exit the program.\n\n"
 	   "Enjoy!\n"
@@ -241,13 +259,52 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  //Do flags
+  bool fullscreen = false, useSDL = true, useX = true, useSVGA = true;
+  for(int i=0;i<argc;)
+    if (strcmp(argv[i],"--use-sdl") == 0) {
+      useX = false;
+      useSVGA = false;
+      chomp(argc,argv,i);
+    } else if (strcmp(argv[i],"--use-x") == 0) {
+      useSDL = false;
+      useSVGA = false;
+      chomp(argc,argv,i);
+    } else if (strcmp(argv[i],"--use-svga") == 0) {
+      useSDL = false;
+      useX = false;
+      chomp(argc,argv,i);
+    } else if (strcmp(argv[i],"--fullscreen") == 0) {
+      fullscreen = true;
+      chomp(argc,argv,i);
+    } else if (strcmp(argv[i],"--width") == 0) {
+      chomp(argc,argv,i);
+      windWidth = atoi(argv[i]);
+      if (windWidth < 1)
+        windWidth = DefaultWidth;
+      windWidth  &= ~3;
+      chomp(argc,argv,i);
+    } else if (strcmp(argv[i],"--height") == 0) {
+      chomp(argc,argv,i);
+      windHeight = atoi(argv[i]);
+      if (windHeight < 1)
+        windHeight = DefaultHeight;
+      chomp(argc,argv,i);
+    } else
+      i++;
+
   int configPlayTrack = -1;
-  int inFrequency = frequency;
+  int inFrequency = Frequency;
 
   playListLength = 0;
   
   if (strcmp(argv[1],"line") == 0) soundSource = SourceLine;
   else if (strcmp(argv[1],"cd") == 0) soundSource = SourceCD;
+
+#if HAVE_LIBESD
+  else if (strcmp(argv[1],"esd") == 0) soundSource = SourceESD;
+#endif
+  
   else if (strcmp(argv[1],"pipe") == 0) {
     if (argc < 3 || sscanf(argv[2],"%d",&inFrequency) != 1)
       error("frequency not specified");
@@ -288,7 +345,34 @@ int main(int argc, char **argv) {
   //else if (volume < 0.0)
   //  volume = 0.0;
 
-  screenInit(windX,windY,windWidth,windHeight);
+  screen = 0;
+
+#if HAVE_SDL
+  if (!screen && useSDL) {
+    screen = new SdlScreen;
+    if (!screen->init(windX,windY,windWidth,windHeight,fullscreen))
+      screen = 0;
+  }
+#endif
+
+#ifndef X_DISPLAY_MISSING
+  if (!screen && useX) {
+    screen = new XScreen;
+    if (!screen->init(windX,windY,windWidth,windHeight,fullscreen))
+      screen = 0;
+  }
+#endif
+
+#if HAVE_LIBVGA
+  if (!screen && useSVGA) {
+    screen = new SvgaScreen;
+    if (!screen->init(windX,windY,windWidth,windHeight,fullscreen))
+      screen = 0;
+  }
+#endif
+
+  if (!screen)
+    error("opening any kind of display device");
 
   allocOutput(outWidth,outHeight);
 
@@ -309,7 +393,7 @@ int main(int argc, char **argv) {
 
     if (interfaceGo()) break;
     
-    screenShow(); 
+    screen->show(); 
 
     frames++;
   } 
@@ -325,7 +409,9 @@ int main(int argc, char **argv) {
     cdClose();
 
   closeSound();
-  screenEnd();
+
+  screen->end();
+  delete screen;
 
   if (timer > 10)
     printf("Frames per second: %f\n", double(frames) / timer);
@@ -334,13 +420,13 @@ int main(int argc, char **argv) {
 }
 
 void error(char *str, bool syscall) { 
-  fprintf(stderr, PROGNAME ": Error %s\n",str); 
+  fprintf(stderr, "synaesthesia: Error %s\n",str); 
   if (syscall)
     fprintf(stderr,"(reason for error: %s)\n",strerror(errno));
   exit(1);
 }
 void warning(char *str, bool syscall) { 
-  fprintf(stderr, PROGNAME ": Possible error %s\n",str); 
+  fprintf(stderr, "synaesthesia: Possible error %s\n",str); 
   if (syscall)
     fprintf(stderr,"(reason for error: %s)\n",strerror(errno));
 }

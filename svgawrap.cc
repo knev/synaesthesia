@@ -21,21 +21,24 @@
     27 Bond St., Mt. Waverley, 3149, Melbourne, Australia
 */
 
-#include <vga.h>
-#include <vgamouse.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
 #include "syna.h"
 
+#if HAVE_LIBVGA
+
+#include <vga.h>
+#include <vgamouse.h>
+
 static unsigned char *scr;
 static int keyboardDevice;
 
-void setPalette(int i,int r,int g,int b) {
+static void setOnePalette(int i,int r,int g,int b) {
   vga_setpalette(i,r/4,g/4,b/4);
 }
 
-void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
+bool SvgaScreen::init(int xHint,int yHint,int widthHint,int heightHint,bool fullscreen) {
   attempt(vga_init(),"initializing svgalib");
   if (!vga_hasmode(G320x200x256)) 
     error("requesting 320x200 graphics mode");
@@ -53,14 +56,15 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
   mouse_setposition(160,34);
   //mouse_setscale(32);
 
-  #define BOUND(x) ((x) > 255 ? 255 : (x))
+  /*#define BOUND(x) ((x) > 255 ? 255 : (x))
   #define PEAKIFY(x) BOUND((x) - (x)*(255-(x))/255/2)
   int i;
   for(i=0;i<256;i++)
     setPalette(i,PEAKIFY((i&15*16)),
                  PEAKIFY((i&15)*16+(i&15*16)/4),
                  PEAKIFY((i&15)*16));
- 
+  */
+
   /* Get keyboard input descriptor */
   if (!isatty(0)) {
     char *tty;
@@ -86,15 +90,17 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
   
   if (keyboardDevice != -1)
     fcntl(keyboardDevice,F_SETFL,O_NONBLOCK);
+
+  return true;
 }
 
-void screenSetPalette(unsigned char *palette) {
+void SvgaScreen::setPalette(unsigned char *palette) {
   int i;
   for(i=0;i<256;i++)
-    setPalette(i,palette[i*3],palette[i*3+1],palette[i*3+2]);
+    setOnePalette(i,palette[i*3],palette[i*3+1],palette[i*3+2]);
 }
 
-void screenEnd() {
+void SvgaScreen::end() {
   if (keyboardDevice > 0)
     close(keyboardDevice);
   
@@ -102,11 +108,11 @@ void screenEnd() {
   vga_setmode(TEXT);
 }
 
-int sizeUpdate() {
+int SvgaScreen::sizeUpdate() {
   return 0;
 }
 
-void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
+void SvgaScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   mouse_update(); 
   mouseX = mouse_getx();
   mouseY = mouse_gety();
@@ -116,7 +122,7 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
     keyHit = 0;
 }
 
-void screenShow(void) {
+void SvgaScreen::show(void) {
   register unsigned long *ptr2 = (unsigned long*)output;
   unsigned long *ptr1 = (unsigned long*)scr;
   int i = 320*200/4;
@@ -162,3 +168,4 @@ void screenShow(void) {
   } while (--i); 
 }
 
+#endif

@@ -21,27 +21,32 @@
     27 Bond St., Mt. Waverley, 3149, Melbourne, Australia
 */
 
+#include "config.h"
+
 #include "polygon.h"
 
 /***************************************/
 /*   For the incurably fiddle prone:   */
 
 /* log2 of sample size */
-#define m 8 
+#define LogSize 9 
 
 /* overlap amount between samples. Set to 1 or 2 if you have a fast computer */
-#define overlap 0 
+#define Overlap 1 
 
 /* Brightness */
-#define brightness 150
+#define Brightness 150
 
 /* Sample frequency*/
-#define frequency 22050
+#define Frequency 22050
 
 /***************************************/
 
+#define DefaultWidth  260
+#define DefaultHeight 260
 
-#define PROGNAME "synaesthesia"
+#define NumSamples (1<<LogSize)
+#define RecSize (1<<LogSize-Overlap)
 
 #ifdef __FreeBSD__
 
@@ -58,7 +63,12 @@ typedef short sampleType;
 #endif
 #endif
 
+#ifdef __FreeBSD__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
+
 #if BYTE_ORDER == BIG_ENDIAN
 #define BIGENDIAN
 #else
@@ -70,28 +80,64 @@ void inline attempt(int x,char *y,bool syscall=false) { if (x == -1) error(y,sys
 void warning(char *str,bool syscall=false);
 void inline attemptNoDie(int x,char *y,bool syscall=false) { if (x == -1) warning(y,syscall); } 
 
-#define n (1<<m)
-#define recSize (1<<m-overlap)
+/* *wrap */
+struct BaseScreen {
+  virtual bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen) = 0;
+  virtual void setPalette(unsigned char *palette) = 0;
+  virtual void end() = 0;
+  virtual int  sizeUpdate() = 0;
+  virtual void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) = 0;
+  virtual void show() = 0;
+};
+
+struct SvgaScreen : public BaseScreen {
+  bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
+  void setPalette(unsigned char *palette);
+  void end();
+  int  sizeUpdate();
+  void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
+  void show();
+};
+
+struct SdlScreen : public BaseScreen {
+  bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
+  void setPalette(unsigned char *palette);
+  void end();
+  int  sizeUpdate();
+  void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
+  void show();
+};
+
+struct XScreen : public BaseScreen {
+  bool init(int xHint, int yHint, int widthHint, int heightHint, bool fullscreen);
+  void setPalette(unsigned char *palette);
+  void end();
+  int  sizeUpdate();
+  void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
+  void show();
+};
 
 /* core */
+extern BaseScreen *screen;
 extern volatile sampleType *data;
-//extern unsigned char *output, *lastOutput, *lastLastOutput;
 extern Bitmap<unsigned short> outputBmp, lastOutputBmp, lastLastOutputBmp;
 #define output ((unsigned char*)outputBmp.data)
 #define lastOutput ((unsigned char*)lastOutputBmp.data)
 #define lastLastOutput ((unsigned char*)lastLastOutputBmp.data)
 
-inline unsigned short combiner(unsigned short a,unsigned short b) {
-  //Not that i want to give the compiler a hint or anything...
-  unsigned char ah = a>>8, al = a&255, bh = b>>8, bl = b&255;
-  if (ah < 64) ah *= 4; else ah = 255;
-  if (al < 64) al *= 4; else al = 255;
-  if (bh > ah) ah = bh;
-  if (bl > al) al = bl;
-  return ah*256+al;
-}
+struct Combiner {
+  static unsigned short combine(unsigned short a,unsigned short b) {
+    //Not that i want to give the compiler a hint or anything...
+    unsigned char ah = a>>8, al = a&255, bh = b>>8, bl = b&255;
+    if (ah < 64) ah *= 4; else ah = 255;
+    if (al < 64) al *= 4; else al = 255;
+    if (bh > ah) ah = bh;
+    if (bl > al) al = bl;
+    return ah*256+al;
+  }
+};
 
-extern PolygonEngine<unsigned short,combiner,2> polygonEngine;
+extern PolygonEngine<unsigned short,Combiner,2> polygonEngine;
 
 extern int outWidth, outHeight;
 
@@ -101,15 +147,6 @@ void coreInit();
 void setStarSize(double size);
 int coreGo();
 void fade();
-
-/* *wrap */
-void screenInit(int xHint,int yHint,int widthHint,int heightHint);
-void screenSetPalette(unsigned char *palette);
-void screenEnd(void);
-void screenShow(void);
-int sizeUpdate(void);
-
-void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
 
 /* ui */
 void interfaceInit();
@@ -150,7 +187,7 @@ void saveConfig();
 void putString(char *string,int x,int y,int red,int blue);
 
 /* sound */
-enum SoundSource { SourceLine, SourceCD, SourcePipe };
+enum SoundSource { SourceLine, SourceCD, SourcePipe, SourceESD };
 
 void cdOpen(char *cdromName);
 void cdClose(void);

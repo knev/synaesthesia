@@ -25,11 +25,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
-#include <SDL.h>
-
 #include "syna.h"
 
-static SDL_Surface *screen;
+#if HAVE_SDL
+
+#include "SDL.h"
+
+static SDL_Surface *surface;
 
 SDL_Surface *CreateScreen(Uint16 w, Uint16 h, Uint8 bpp, Uint32 flags)
 {
@@ -48,7 +50,7 @@ SDL_Surface *CreateScreen(Uint16 w, Uint16 h, Uint8 bpp, Uint32 flags)
   return(screen);
 }
   
-void screenSetPalette(unsigned char *palette) {
+void SdlScreen::setPalette(unsigned char *palette) {
   SDL_Color sdlPalette[256];
 
   for(int i=0;i<256;i++) {
@@ -57,42 +59,27 @@ void screenSetPalette(unsigned char *palette) {
     sdlPalette[i].b = palette[i*3+2];
   }
   
-  SDL_SetColors(screen, sdlPalette, 0, 256);
+  SDL_SetColors(surface, sdlPalette, 0, 256);
 }
 
-void screenInit(int xHint,int yHint,int width,int height) 
+bool SdlScreen::init(int xHint,int yHint,int width,int height,bool fullscreen) 
 {
   Uint32 videoflags;
 
   /* Initialize SDL */
   if ( SDL_Init(SDL_INIT_VIDEO) < 0 ) {
     char str[1000];
-    sprintf(str, "initializing SDL library: %s\n",SDL_GetError());
-    error(str);
+    printf(str, "Could not initialize SDL library: %s\n",SDL_GetError());
+    return false;
   }
 
-  /* See if we try to get a hardware colormap */
-  videoflags = SDL_SWSURFACE;
-  //videoflags = SDL_HWSURFACE;
-  /*while ( argc > 1 ) {
-    --argc;
-    if ( argv[argc] && (strcmp(argv[argc], "-hw") == 0) ) {
-      videoflags |= SDL_HWSURFACE;
-    } else
-    if ( argv[argc] && (strcmp(argv[argc], "-warp") == 0) ) {
-      videoflags |= SDL_HWPALETTE;
-    } else
-    if ( argv[argc] && (strcmp(argv[argc], "-fullscreen") == 0) ) {
-      videoflags |= SDL_FULLSCREEN;
-    } else {
-      fprintf(stderr, "Usage: %s [-warp] [-fullscreen]\n",
-                argv[0]);
-      exit(1);
-    }
-  }*/
+  SDL_WM_SetCaption("Synaesthesia","synaesthesia");
 
-  screen = CreateScreen(width, height, 8, videoflags);
-  if ( screen == NULL ) {
+  /* See if we try to get a hardware colormap */
+  videoflags = SDL_SWSURFACE | (fullscreen?SDL_FULLSCREEN:0);
+
+  surface = CreateScreen(width, height, 8, videoflags);
+  if ( surface == NULL ) {
     error("requesting screen dimensions");
   }
 
@@ -101,13 +88,15 @@ void screenInit(int xHint,int yHint,int width,int height)
 
   SDL_EnableUNICODE(1);
   SDL_ShowCursor(0);
+
+  return true;
 }
 
-void screenEnd(void) {
+void SdlScreen::end(void) {
   SDL_Quit();
 }
 
-void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {    
+void SdlScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {    
   SDL_Event event;
  
   keyHit = 0;
@@ -152,13 +141,13 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   }
 }
 
-int sizeUpdate(void) { return 0; }
+int SdlScreen::sizeUpdate(void) { return 0; }
 
-void screenShow(void) { 
-  attempt(SDL_LockSurface(screen),"locking screen for output.");
+void SdlScreen::show(void) { 
+  attempt(SDL_LockSurface(surface),"locking screen for output.");
 
   register unsigned long *ptr2 = (unsigned long*)output;
-  unsigned long *ptr1 = (unsigned long*)( screen->pixels );
+  unsigned long *ptr1 = (unsigned long*)( surface->pixels );
   int i = outWidth*outHeight/4;
 
   do {
@@ -194,6 +183,8 @@ void screenShow(void) {
     //} else ptr1++;
   } while (--i); 
 
-  SDL_UnlockSurface(screen);
-  SDL_UpdateRect(screen, 0, 0, 0, 0);
+  SDL_UnlockSurface(surface);
+  SDL_UpdateRect(surface, 0, 0, 0, 0);
 }
+
+#endif

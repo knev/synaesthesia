@@ -27,14 +27,14 @@
 #include <string.h>
 #include "syna.h"
 
-double cosTable[n], negSinTable[n];
-int bitReverse[n];
+double cosTable[NumSamples], negSinTable[NumSamples];
+int bitReverse[NumSamples];
 int scaleDown[256];
 int maxStarRadius;
 
 int bitReverser(int i) {
   int sum=0,j;
-  for(j=0;j<m;j++) {
+  for(j=0;j<LogSize;j++) {
     sum = (i&1)+sum*2;
     i >>= 1;
   }
@@ -42,15 +42,15 @@ int bitReverser(int i) {
 }
 
 void fft(double *x,double *y) {
-  int n2 = n, n1;
+  int n2 = NumSamples, n1;
   int twoToTheK;
-  for(twoToTheK=1;twoToTheK<n;twoToTheK*=2) {
+  for(twoToTheK=1;twoToTheK<NumSamples;twoToTheK*=2) {
     n1 = n2;
     n2 /= 2;
     for(int j=0;j<n2;j++) {
-      double c = cosTable[j*twoToTheK&(n-1)], 
-             s = negSinTable[j*twoToTheK&(n-1)];
-      for(int i=j;i<n;i+=n1) {
+      double c = cosTable[j*twoToTheK&(NumSamples-1)], 
+             s = negSinTable[j*twoToTheK&(NumSamples-1)];
+      for(int i=j;i<NumSamples;i+=n1) {
         int l = i+n2;
         double xt = x[i] - x[l];
 	x[i] = (x[i] + x[l]);
@@ -66,9 +66,9 @@ void fft(double *x,double *y) {
 void coreInit() {
   int i;
 
-  for(i=0;i<n;i++) {
-    negSinTable[i] = -sin(3.141592*2.0/n*i);
-    cosTable[i] = cos(3.141592*2.0/n*i);
+  for(i=0;i<NumSamples;i++) {
+    negSinTable[i] = -sin(3.141592*2.0/NumSamples*i);
+    cosTable[i] = cos(3.141592*2.0/NumSamples*i);
     bitReverse[i] = bitReverser(i);
   }
 }
@@ -285,28 +285,28 @@ void fade() {
 }
 
 int coreGo() { 
-  double x[n], y[n];
-  double a[n], b[n];
-  int clarity[n]; //Surround sound
+  double x[NumSamples], y[NumSamples];
+  double a[NumSamples], b[NumSamples];
+  int clarity[NumSamples]; //Surround sound
   int i,j,k;
   
-  int brightFactor = int(brightness * brightnessTwiddler /(starSize+0.01));  
+  int brightFactor = int(Brightness * brightnessTwiddler /(starSize+0.01));  
 
   if (-1 == getNextFragment())
     return -1;
 
-  for(i=0;i<n;i++) {
+  for(i=0;i<NumSamples;i++) {
     x[i] = data[i*2];
     y[i] = data[i*2+1];
   }
 
   fft(x,y);
   
-  for(i=0 +1;i<n;i++) {
+  for(i=0 +1;i<NumSamples;i++) {
     double x1 = x[bitReverse[i]], 
            y1 = y[bitReverse[i]], 
-           x2 = x[bitReverse[n-i]], 
-           y2 = y[bitReverse[n-i]],
+           x2 = x[bitReverse[NumSamples-i]], 
+           y2 = y[bitReverse[NumSamples-i]],
 	   aa,bb;
     a[i] = sqrt(aa= (x1+x2)*(x1+x2) + (y1-y2)*(y1-y2) );
     b[i] = sqrt(bb= (x1-x2)*(x1-x2) + (y1+y2)*(y1+y2) );
@@ -341,15 +341,15 @@ int coreGo() {
   } while(--i > 0);
   */
  
-  int heightFactor = n/2 / outHeight + 1;
-  int actualHeight = n/2/heightFactor;
+  int heightFactor = NumSamples/2 / outHeight + 1;
+  int actualHeight = NumSamples/2/heightFactor;
   int heightAdd = outHeight + actualHeight >> 1;
 
   /* Correct for window size */
-  double brightFactor2 = (brightFactor/65536.0/n)*
+  double brightFactor2 = (brightFactor/65536.0/NumSamples)*
       sqrt(actualHeight*outWidth/(320.0*200.0));
 
-  for(i=1;i<n/2;i++) {
+  for(i=1;i<NumSamples/2;i++) {
     //int h = (int)( b[i]*280 / (a[i]+b[i]+0.0001)+20 );
     if (a[i] > 0 || b[i] > 0) {
       int h = (int)( b[i]*outWidth / (a[i]+b[i]) );

@@ -257,7 +257,7 @@ void setupPalette(double dummy=0.0) {
     palette[i*3+1] = PEAKIFY(b*bgGreen*16+f*fgGreen*16);
     palette[i*3+2] = PEAKIFY(b*bgBlue*16+f*fgBlue*16);
   }
-  screenSetPalette(palette);
+  screen->setPalette(palette);
 }
 
 void setTrackProgress(double progress) {
@@ -482,8 +482,8 @@ bool interfaceGo() {
   int action = NotASymbol;
   int oldButtons = mouseButtons;
   
-  sizeUpdate();
-  inputUpdate(mouseX,mouseY,mouseButtons,keyHit);
+  screen->sizeUpdate();
+  screen->inputUpdate(mouseX,mouseY,mouseButtons,keyHit);
 
   bool mouseClick = (mouseButtons && !oldButtons);
 

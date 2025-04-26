@@ -22,12 +22,15 @@
 */
 
 #include <string.h>
+#include <stdio.h>
+
+#include "syna.h"
+
+#ifndef X_DISPLAY_MISSING
 
 extern "C" {
 #include "xlib.h"
 }
-
-#include "syna.h"
 
 static xlibparam xparams = { 0, 0, 0 };
 static xdisplay *d;
@@ -35,13 +38,17 @@ static xdisplay *d;
 static bool lowColor, paletteInstalled;
 static unsigned char mapping[64];
 
-int setPalette(int i,int r,int g,int b) {
+static int setOnePalette(int i,int r,int g,int b) {
   return xalloc_color(d,r*257,g*257,b*257,0);
 }
 
-void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
+bool XScreen::init(int xHint,int yHint,int widthHint,int heightHint,bool fullscreen) {
   d = xalloc_display("Synaesthesia",xHint,yHint,widthHint,heightHint,&xparams);
-  if (d == 0) error("setting up a window");
+  if (d == 0) {
+    printf("Opening an X window failed.\n");
+    return false;
+  }
+    
   if (!alloc_image(d)) error("allocating window buffer");
   outWidth = widthHint;
   outHeight = heightHint;
@@ -66,9 +73,10 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
                                         PEAKIFY((i&7)*32)),
         " in X: could not allocate sufficient palette entries");
   }*/
+  return true;
 }
 
-void screenSetPalette(unsigned char *palette) {
+void XScreen::setPalette(unsigned char *palette) {
   int i;
 
   if (paletteInstalled)
@@ -76,13 +84,13 @@ void screenSetPalette(unsigned char *palette) {
 
   if (!lowColor) {
     for(i=0;i<256;i++)
-      attempt(setPalette(i,palette[i*3],palette[i*3+1],palette[i*3+2]),
+      attempt(setOnePalette(i,palette[i*3],palette[i*3+1],palette[i*3+2]),
               " in X: could not allocate sufficient palette entries");
   } else {
     const int array[8] = {0,2,5,7,9,11,13,15};
     for(i=0;i<64;i++) {
       int p = (array[i&7]+array[i/8]*16) *3;
-      attempt(mapping[i] = setPalette(i,palette[p],palette[p+1],palette[p+2]),
+      attempt(mapping[i] = setOnePalette(i,palette[p],palette[p+1],palette[p+2]),
         " in X: could not allocate sufficient palette entries");
     }
   }
@@ -90,13 +98,13 @@ void screenSetPalette(unsigned char *palette) {
   paletteInstalled = true;
 }
 
-void screenEnd() {
+void XScreen::end() {
   if (paletteInstalled)
     xfree_colors(d);
   xfree_display(d);
 }
 
-int sizeUpdate() {
+int XScreen::sizeUpdate() {
   int newWidth,newHeight;
   if (xsize_update(d,&newWidth,&newHeight)) {
     if (newWidth == outWidth && newHeight == outHeight)
@@ -112,7 +120,7 @@ int sizeUpdate() {
   return 0;
 }
 
-void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
+void XScreen::inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   xmouse_update(d);
   mouseX = xmouse_x(d);
   mouseY = xmouse_y(d);
@@ -120,7 +128,7 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   keyHit = xkeyboard_query(d);
 }
  
-void screenShow(void) { 
+void XScreen::show(void) { 
   register unsigned long *ptr2 = (unsigned long*)output;
   unsigned long *ptr1 = (unsigned long*)d->back;
   int i = outWidth*outHeight/4;
@@ -186,3 +194,4 @@ void screenShow(void) {
   XFlush(d->display);
 }
 
+#endif
