@@ -18,6 +18,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
+ *
+ * Shamelessly ripped for use in xsynaesthesia
  */
 //#include "aconfig.h"
 #define X11_DRIVER
@@ -85,6 +88,19 @@ void draw_screen(xdisplay * d)
 	    for (; s < e; s++, de++)
 		*de = d->pixels[*s];
 	    break;
+	}
+    case 24:{
+	    unsigned char *de;
+	    unsigned char *s;
+	    unsigned char *e;
+	    for (s = (unsigned char *) d->vbuffs[d->current],
+		 e = (unsigned char *) d->vbuffs[d->current] + (d->linewidth * d->height),
+		 de = (unsigned char *) d->data[d->current]; s < e; s++, de+=3)
+	      de[0] = d->pixels[*s],
+	      de[1] = d->pixels[*s]>>8,
+	      de[2] = d->pixels[*s]>>16;
+	    
+            break;	
 	}
     case 32:{
 	    unsigned long *de;
@@ -239,7 +255,10 @@ int alloc_image(xdisplay * d)
 	    printf("Out of memory for image..exiting\n");
 	    exit(-1);
 	}
-	d->image[i]->data = malloc(d->image[i]->bytes_per_line * d->height);
+	//Add a little extra memory to catch overruns when dumping image to buffer in draw_screen
+	d->image[i]->data = malloc(d->image[i]->bytes_per_line * d->height + 32);
+	memset(d->image[i]->data,0,d->image[i]->bytes_per_line * d->height);
+
 	if (d->image[i]->data == NULL) {
 	    printf("Out of memory for image buffers..exiting\n");
 	    exit(-1);
@@ -249,7 +268,11 @@ int alloc_image(xdisplay * d)
     }
     if (d->depth != 8) {
 	for (i = 0; i < 2; i++) {
-	    d->vbuffs[i] = malloc(d->linewidth * d->height);
+	    //Add a little extra memory to catch overruns 
+	    //when dumping image to buffer in draw_screen
+	    d->vbuffs[i] = malloc(d->linewidth * d->height + 32);
+	    memset(d->vbuffs[i],0,d->linewidth * d->height);
+
 	    if (d->vbuffs[i] == NULL) {
 		printf("Out of memory for image buffers2..exiting\n");
 		exit(-1);
@@ -317,7 +340,7 @@ xdisplay *xalloc_display(char *s, int xHint, int yHint, int x, int y, xlibparam 
 			    if (!XMatchVisualInfo(new->display, new->screen, 8, TrueColor, &vis) &&
 				!XMatchVisualInfo(new->display, new->screen, 8, StaticColor, &vis) &&
 				!XMatchVisualInfo(new->display, new->screen, 8, StaticGray, &vis)) {
-				printf("Display does not support PseudoColor depth 7,8,StaticColor depth 8, StaticGray depth 8, Truecolor depth 8,15,16,24 nor 32! try -usedefault\n");
+				printf("Display does not support PseudoColor depth 7,8,StaticColor depth 8, StaticGray depth 8, Truecolor depth 8,15,16,24 nor 32!\n");
 				return NULL;
 			    } else
 				new->truecolor = 1;
@@ -344,7 +367,7 @@ xdisplay *xalloc_display(char *s, int xHint, int yHint, int x, int y, xlibparam 
 		new->truecolor = 0;
 		new->fixedcolormap = 0;
 	    } else {
-		printf("Pseudocolor visual on unsuported depth try autodetection of visuals\n");
+		printf("Pseudocolor visual on unsuported depth\n");
 		return NULL;
 	    }
 	    break;
@@ -360,7 +383,7 @@ xdisplay *xalloc_display(char *s, int xHint, int yHint, int x, int y, xlibparam 
 	    else if (new->depth <= 32)
 		new->depth = 32;
 	    else {
-		printf("Truecolor visual on unsuported depth try autodetection of visuals\n");
+		printf("Truecolor visual on unsuported depth\n");
 		return NULL;
 	    }
 	    break;
@@ -687,9 +710,14 @@ char xkeyboard_query(xdisplay * d) {
     if (XCheckMaskEvent(d->display,KeyPressMask | KeyReleaseMask, &event)) {
       char *str =
         XKeysymToString(XLookupKeysym((XKeyPressedEvent*)(&event),0));
+        
+      if ( ((XKeyPressedEvent*)(&event))->state & 
+	   (ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask) )
+	return 0;
 
       if (str) {
         char key;
+
         if (strlen(str) == 1)
 	  key = str[0];
 	else if (strcmp(str,"equal") == 0)
@@ -700,6 +728,12 @@ char xkeyboard_query(xdisplay * d) {
 	  key = '[';
 	else if (strcmp(str,"bracketright") == 0)
 	  key = ']';
+	else if (strcmp(str,"comma") == 0)
+	  key = ',';
+	else if (strcmp(str,"period") == 0)
+	  key = '.';
+	else if (strcmp(str,"slash") == 0)
+	  key = '/';
 	else return 0;
 	
         if ( ((XKeyPressedEvent*)(&event))->state & ShiftMask )
@@ -707,6 +741,12 @@ char xkeyboard_query(xdisplay * d) {
 	    case '=' : key = '+'; break;
 	    case '[' : key = '{'; break;
 	    case ']' : key = '}'; break;
+	    case ',' : key = '<'; break;
+	    case '/' : key = '?'; break;
+	    default :
+	      if (key >= 'a' && key <= 'z')
+		key = key+'A'-'a';
+	      break;
 	  }
         return key;
       }
@@ -721,12 +761,14 @@ int xsize_update(xdisplay *d,int *width,int *height) {
     if (XCheckMaskEvent(d->display,StructureNotifyMask, &event)) {
       if (event.type == ConfigureNotify) {
         xupdate_size(d);
+        free_image(d);
         alloc_image(d);
         *width = d->linewidth;
         *height = d->height;
         return 1;
       }
     }
+
     return 0;
 }
 

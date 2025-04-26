@@ -51,6 +51,7 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
   mouse_setxrange(-1,321);
   mouse_setyrange(-1,201);
   mouse_setposition(160,34);
+  //mouse_setscale(32);
 
   #define BOUND(x) ((x) > 255 ? 255 : (x))
   #define PEAKIFY(x) BOUND((x) - (x)*(255-(x))/255/2)
@@ -87,6 +88,12 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
     fcntl(keyboardDevice,F_SETFL,O_NONBLOCK);
 }
 
+void screenSetPalette(unsigned char *palette) {
+  int i;
+  for(i=0;i<256;i++)
+    setPalette(i,palette[i*3],palette[i*3+1],palette[i*3+2]);
+}
+
 void screenEnd() {
   if (keyboardDevice > 0)
     close(keyboardDevice);
@@ -98,11 +105,6 @@ void screenEnd() {
 int sizeUpdate() {
   return 0;
 }
-void sizeRequest(int width,int height) {
-  if (width != 320 || height != 200)
-    warning("resizing screen.");
-}
-
 
 void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   mouse_update(); 
@@ -130,7 +132,8 @@ void screenShow(void) {
     //Fade will continue even after value > 16
     //thus black pixel will be written when values just > 0
     //thus no need to write true black
-    if (r1 || r2) {
+    //if (r1 || r2) {
+#ifdef LITTLEENDIAN
       register unsigned int const v = 
           ((r1 & 0x000000f0ul) >> 4)
         | ((r1 & 0x0000f000ul) >> 8)
@@ -141,9 +144,21 @@ void screenShow(void) {
         | ((r2 & 0x0000f000ul) << 8)
         | ((r2 & 0x00f00000ul) << 4)
         | ((r2 & 0xf0000000ul)));
-    } else {
-      ptr1++;
-    }  
+#else
+      register unsigned int const v = 
+          ((r2 & 0x000000f0ul) >> 4)
+        | ((r2 & 0x0000f000ul) >> 8)
+        | ((r2 & 0x00f00000ul) >> 12)
+        | ((r2 & 0xf0000000ul) >> 16);
+      *(ptr1++) = v | 
+        ( ((r1 & 0x000000f0ul) << 12)
+        | ((r1 & 0x0000f000ul) << 8)
+        | ((r1 & 0x00f00000ul) << 4)
+        | ((r1 & 0xf0000000ul)));
+#endif
+    //} else {
+    //  ptr1++;
+    //}  
   } while (--i); 
 }
 

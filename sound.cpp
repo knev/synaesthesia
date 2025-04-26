@@ -57,7 +57,7 @@ static int cdDevice;
 static int trackCount = 0, *trackFrame = 0;
 
 void cdOpen(char *cdromName) {
-  attempt(cdDevice = open(cdromName,O_RDONLY),"talking to CD device");
+  attempt(cdDevice = open(cdromName,O_RDONLY),"talking to CD device",true);
 }
 
 void cdClose(void) {
@@ -153,8 +153,11 @@ void cdPlay(int frame, int endFrame) {
   struct ioc_play_msf msf;
 #endif
   if (frame < 1) frame = 1;
-  if (endFrame < 1) endFrame = trackFrame[trackCount];
-
+  if (endFrame < 1) {
+    if (!trackFrame) return; 
+    endFrame = trackFrame[trackCount];
+  }
+  
   //Some CDs can't change tracks unless not playing.
   // (Sybren Stuvel)
   cdStop();
@@ -176,12 +179,12 @@ void cdPlay(int frame, int endFrame) {
   msf.cdmsf_min1 = (endFrame-1) / (60*CD_FRAMES);
   msf.cdmsf_sec1 = (endFrame-1) / CD_FRAMES % 60;
   msf.cdmsf_frame1 = (endFrame-1) % CD_FRAMES;
-  attemptNoDie(ioctl(cdDevice, CDROMPLAYMSF, &msf),"playing CD");
+  attemptNoDie(ioctl(cdDevice, CDROMPLAYMSF, &msf),"playing CD",true);
 #else
   msf.end_m = (endFrame-1) / (60*CD_FRAMES);
   msf.end_s = (endFrame-1) / CD_FRAMES % 60;
   msf.end_f = (endFrame-1) % CD_FRAMES;
-  attemptNoDie(ioctl(cdDevice, CDIOCPLAYMSF, (char *) &msf),"playing CD");
+  attemptNoDie(ioctl(cdDevice, CDIOCPLAYMSF, (char *) &msf),"playing CD",true);
 #endif
 }
 
@@ -258,34 +261,45 @@ void cdStop(void) {
 }
 void cdPause(void) {
 #ifndef __FreeBSD__
-  attemptNoDie(ioctl(cdDevice, CDROMPAUSE),"pausing CD");
+  attemptNoDie(ioctl(cdDevice, CDROMPAUSE),"pausing CD",true);
 #else
-  attemptNoDie(ioctl(cdDevice, CDIOCPAUSE),"pausing CD");
+  attemptNoDie(ioctl(cdDevice, CDIOCPAUSE),"pausing CD",true);
 #endif
 }
 void cdResume(void) {
 #ifndef __FreeBSD__
-  attemptNoDie(ioctl(cdDevice, CDROMRESUME),"resuming CD");
+  attemptNoDie(ioctl(cdDevice, CDROMRESUME),"resuming CD",true);
 #else
-  attemptNoDie(ioctl(cdDevice, CDIOCRESUME),"resuming CD");
+  attemptNoDie(ioctl(cdDevice, CDIOCRESUME),"resuming CD",true);
 #endif
 }
 void cdEject(void) {
 #ifndef __FreeBSD__
-  attemptNoDie(ioctl(cdDevice, CDROMEJECT),"ejecting CD");
+  attemptNoDie(ioctl(cdDevice, CDROMEJECT),"ejecting CD",true);
 #else
-  attemptNoDie(ioctl(cdDevice, CDIOCEJECT),"ejecting CD");
+  attemptNoDie(ioctl(cdDevice, CDIOCEJECT),"ejecting CD",true);
 #endif
 }
 void cdCloseTray(void) {
 #ifndef __FreeBSD__
-  attemptNoDie(ioctl(cdDevice, CDROMCLOSETRAY),"ejecting CD");
+  attemptNoDie(ioctl(cdDevice, CDROMCLOSETRAY),"ejecting CD",true);
 #else
-  attemptNoDie(ioctl(cdDevice, CDIOCCLOSE),"ejecting CD");
+  attemptNoDie(ioctl(cdDevice, CDIOCCLOSE),"ejecting CD",true);
 #endif
 }
 
 /* Sound Recording ================================================= */
+
+#ifdef LITTLEENDIAN
+#define SOUNDFORMAT AFMT_S16_LE
+#else
+#define SOUNDFORMAT AFMT_S16_BE
+#endif
+
+//If kernel starts running out of sound memory playing mp3s, this could
+//be the problem. OTOH if it is too small, it will start ticking on slow
+//computers
+#define MAXWINDOWSIZE 32
 
 static SoundSource source;
 static int inFrequency, downFactor, windowSize, pipeIn, device;
@@ -299,16 +313,16 @@ void setupMixer(double &loudness) {
   else {
     if (source != SourcePipe) {
       int blah = (source == SourceCD ? SOUND_MASK_CD : SOUND_MASK_LINE + SOUND_MASK_MIC);
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_RECSRC,&blah),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_RECSRC,&blah),"writing to mixer",true);
     }
 
     if (source == SourceCD) {
       int volume;
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_CD,&volume),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_READ_CD,&volume),"writing to mixer",true);
       loudness = ((volume&0xff) + volume/256) / 200.0; 
     } else if (source == SourceLine) {
       int volume = 100*256 + 100;
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_LINE,&volume),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_READ_LINE,&volume),"writing to mixer",true);
       //attemptNoDie(ioctl(device,SOUND_MIXER_READ_MIC,&volume),"writing to mixer");
       loudness = ((volume&0xff) + volume/256) / 200.0; 
     } else 
@@ -320,29 +334,29 @@ void setupMixer(double &loudness) {
 void setVolume(double loudness) {
   int device = open(mixer,O_WRONLY);
   if (device == -1) 
-    warning("opening mixer device");
+    warning("opening mixer device",true);
   else {
     int scaledLoudness = int(loudness * 100.0);
     if (scaledLoudness < 0) scaledLoudness = 0;
     if (scaledLoudness > 100) scaledLoudness = 100;
     scaledLoudness = scaledLoudness*256 + scaledLoudness;
     if (source == SourceCD) {
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_CD,&scaledLoudness),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_CD,&scaledLoudness),"writing to mixer",true);
     } else if (source == SourceLine) {
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_LINE,&scaledLoudness),"writing to mixer");
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_MIC,&scaledLoudness),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_LINE,&scaledLoudness),"writing to mixer",true);
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_MIC,&scaledLoudness),"writing to mixer",true);
     } else {
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_PCM,&scaledLoudness),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_PCM,&scaledLoudness),"writing to mixer",true);
     }
     close(device);
   }
 } 
 
-void openSound(SoundSource source, int inFrequency, int windowSize, char *dspName, 
+void openSound(SoundSource source, int inFrequency, char *dspName, 
                char *mixerName) {
   ::source = source;
   ::inFrequency = inFrequency; 
-  ::windowSize = windowSize;
+  ::windowSize = 1;
   mixer = mixerName;
   downFactor = inFrequency / frequency; 
   if (downFactor <= 0)
@@ -351,31 +365,32 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   int format, stereo, fragment, fqc;
 
 #ifdef __FreeBSD__
-  attempt(device = open(dspName,O_WRONLY),"opening dsp device");
-  format = AFMT_S16_LE;
-  attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
-  if (format != AFMT_S16_LE) error("setting format (2)");
+  attempt(device = open(dspName,O_WRONLY),"opening dsp device",true);
+  format = SOUNDFORMAT;
+  attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format",true);
+  if (format != SOUNDFORMAT) error("setting format (2)");
   close(device);
 #endif
   if (source == SourcePipe)
-    attempt(device = open(dspName,O_WRONLY),"opening dsp device");
+    attempt(device = open(dspName,O_WRONLY),"opening dsp device",true);
   else
-    attempt(device = open(dspName,O_RDONLY),"opening dsp device");
+    attempt(device = open(dspName,O_RDONLY),"opening dsp device",true);
     
   //Probably not needed
   //attemptNoDie(ioctl(device,SNDCTL_DSP_RESET,0),"reseting dsp");
-  format = AFMT_S16_LE;
+  format = SOUNDFORMAT;
   fqc = (source == SourcePipe ? inFrequency : frequency);
   stereo = 1;
   
-  int logWindowSize = -1, tmp = windowSize*downFactor;
-  while(tmp) {
-    tmp /= 2;
-    logWindowSize++;
-  }
+  //int logWindowSize = -1, tmp = windowSize*downFactor;
+  //while(tmp) {
+  //  tmp /= 2;
+  //  logWindowSize++;
+  //}
 
   if (source == SourcePipe)
-    fragment = 0x00020000 + (m-overlap+1)+logWindowSize;
+    //fragment = 0x00020000 + (m-overlap+1)+logWindowSize;
+    fragment = 0x00010000*(MAXWINDOWSIZE+1) + (m-overlap+1);//+logWindowSize;
                                                  //Soundcard should read in windowSize 
                                                  // blocks of sound before blocking
   else
@@ -389,19 +404,19 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   
   //Was 0x00010000 + m; 
 
-  attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment");
+  attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment",true);
 #ifndef __FreeBSD__
-  attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
-  if (format != AFMT_S16_LE) error("setting format (2)");
+  attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format",true);
+  if (format != SOUNDFORMAT) error("setting format (2)");
 #endif
-  attempt(ioctl(device,SNDCTL_DSP_STEREO,&stereo),"setting stereo");
-  attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency");
+  attempt(ioctl(device,SNDCTL_DSP_STEREO,&stereo),"setting stereo",true);
+  attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency",true);
    
   data = new short[n*2];  
 
   if (source == SourcePipe) {
-    dataIn = new short[n*2*downFactor*windowSize];
-    memset(dataIn,0,n*4*downFactor*windowSize);
+    dataIn = new short[n*2*downFactor*MAXWINDOWSIZE];
+    memset(dataIn,0,n*4*downFactor*MAXWINDOWSIZE);
     pipeIn = dup(0);
     close(0);
   }
@@ -416,21 +431,44 @@ void closeSound() {
   close(device);
 }
 
+int readWholeBlock(int pipe,char *dest,int length) {
+  while(length > 0) {
+    int result = read(pipe,dest,length);
+    if (result < 1)
+      return -1;
+    dest += result;
+    length -= result;
+  }
+  return 0;
+}
+
 int getNextFragment(void) {
-  if (source == SourcePipe) { 
-    int i,j;
+  if (source == SourcePipe) {
+    static int lastTime = 0;
+    int nowTime;
+    timeval timeVal1, timeVal2;
+
+    gettimeofday(&timeVal1,0);
     write(device, (char*)dataIn, n*4*downFactor*windowSize); 
-      
-    int position = 0, remaining = n*4*downFactor*windowSize, result;
-    while(remaining > 0) {
-      result = read(pipeIn, ((char*)dataIn)+position, remaining);
-      if (result <= 0)
-        return -1;
-      
-      position += result;
-      remaining -= result;
+    gettimeofday(&timeVal2,0);
+
+    nowTime = timeVal1.tv_usec + timeVal1.tv_sec * 1000000;
+    if (nowTime > lastTime) {
+      int optimumFrags =
+         int(double(nowTime-lastTime)*inFrequency/1000000.0/(n*downFactor))
+	     +1;
+      if (optimumFrags > MAXWINDOWSIZE)
+        optimumFrags = MAXWINDOWSIZE;
+
+      windowSize = optimumFrags;
     }
     
+    lastTime = timeVal2.tv_usec + timeVal2.tv_sec * 1000000;
+  
+    if (readWholeBlock(pipeIn, ((char*)dataIn), n*4*downFactor*windowSize) == -1)
+      return -1;
+    
+    int i,j;
     for(i=0,j=0;i<n;i++,j+=downFactor) 
       ((long*)data)[i] = ((long*)dataIn)[j]; 
   } else {
@@ -445,7 +483,9 @@ int getNextFragment(void) {
       if (recSize != n)
         memmove((char*)data,(char*)data+recSize*4,(n-recSize)*4);
 
-      read(device,(char*)data+n*4-recSize*4, recSize*4);
+      attemptNoDie(
+        readWholeBlock(device,(char*)data+n*4-recSize*4, recSize*4),
+	"reading from soundcard", true);
     }
   }
   return 0;

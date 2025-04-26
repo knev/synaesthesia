@@ -21,6 +21,8 @@
     27 Bond St., Mt. Waverley, 3149, Melbourne, Australia
 */
 
+#include "polygon.h"
+
 /***************************************/
 /*   For the incurably fiddle prone:   */
 
@@ -56,50 +58,94 @@ typedef short sampleType;
 #endif
 #endif
 
-void error(char *str);
-void inline attempt(int x,char *y) { if (x == -1) error(y); }  
-void warning(char *str);
-void inline attemptNoDie(int x,char *y) { if (x == -1) warning(y); } 
+#include <endian.h>
+#if BYTE_ORDER == BIG_ENDIAN
+#define BIGENDIAN
+#else
+#define LITTLEENDIAN
+#endif
+
+void error(char *str,bool syscall=false);
+void inline attempt(int x,char *y,bool syscall=false) { if (x == -1) error(y,syscall); }  
+void warning(char *str,bool syscall=false);
+void inline attemptNoDie(int x,char *y,bool syscall=false) { if (x == -1) warning(y,syscall); } 
 
 #define n (1<<m)
 #define recSize (1<<m-overlap)
 
 /* core */
 extern volatile sampleType *data;
-extern unsigned char *output;
+//extern unsigned char *output, *lastOutput, *lastLastOutput;
+extern Bitmap<unsigned short> outputBmp, lastOutputBmp, lastLastOutputBmp;
+#define output ((unsigned char*)outputBmp.data)
+#define lastOutput ((unsigned char*)lastOutputBmp.data)
+#define lastLastOutput ((unsigned char*)lastLastOutputBmp.data)
+
+inline unsigned short combiner(unsigned short a,unsigned short b) {
+  //Not that i want to give the compiler a hint or anything...
+  unsigned char ah = a>>8, al = a&255, bh = b>>8, bl = b&255;
+  if (ah < 64) ah *= 4; else ah = 255;
+  if (al < 64) al *= 4; else al = 255;
+  if (bh > ah) ah = bh;
+  if (bl > al) al = bl;
+  return ah*256+al;
+}
+
+extern PolygonEngine<unsigned short,combiner,2> polygonEngine;
+
 extern int outWidth, outHeight;
-extern int brightFactor;
+
+void allocOutput(int w,int h);
 
 void coreInit();
+void setStarSize(double size);
 int coreGo();
+void fade();
 
+/* *wrap */
 void screenInit(int xHint,int yHint,int widthHint,int heightHint);
+void screenSetPalette(unsigned char *palette);
 void screenEnd(void);
 void screenShow(void);
-void sizeRequest(int width,int height);
 int sizeUpdate(void);
 
 void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
 
-int processUserInput(void); //True == abort now
-void showOutput(void);
+/* ui */
+void interfaceInit();
+void interfaceSyncToState();
+void interfaceEnd();
+bool interfaceGo();
 
-/* bitmap */
 enum SymbolID {
-  Bulb = 0, 
-  Speaker = 1, Play = 2, Pause = 3, Stop = 4, SkipFwd = 5, SkipBack = 6,
-  Handle = 7, Pointer = 8, Open = 9, NoCD = 10, Exit = 11,
-  Zero = 12, One = 13, Two = 14, Three = 15, Four = 16,
-  Five = 17, Six = 18, Seven = 19, Eight = 20, Nine = 21, Ten = 22,
-  Colon = 22, Slider = 23, Selector = 24,
-  SymbolCount = 25
+  Speaker, Bulb,
+  Play, Pause, Stop, SkipFwd, SkipBack,
+  Handle, Pointer, Open, NoCD, Exit,
+  Zero, One, Two, Three, Four,
+  Five, Six, Seven, Eight, Nine,
+  Slider, Selector, Plug, Loop, Box, Bar,
+  Flame, Wave, Stars, Star, Diamond, Size, FgColor, BgColor,
+  Save, Reset, TrackSelect,
+  NotASymbol
 };
 
-enum TransferType {
-  HalfBlue, HalfRed, MaxBlue, MaxRed
-};
+/* State information */
 
-void putSymbol(int x,int y,int id,TransferType typ);
+extern SymbolID state;
+extern int track, frames;
+extern double trackProgress;
+extern char **playList;
+extern int playListLength, playListPosition;
+extern SymbolID fadeMode;
+extern bool pointsAreDiamonds;
+extern double brightnessTwiddler; 
+extern double starSize; 
+extern double fgRedSlider, fgGreenSlider, bgRedSlider, bgGreenSlider;
+
+extern double volume; 
+
+void setStateToDefaults();
+void saveConfig();
 
 void putString(char *string,int x,int y,int red,int blue);
 
@@ -117,8 +163,7 @@ void cdEject(void);
 void cdCloseTray(void);
 int cdGetTrackCount(void);
 int cdGetTrackFrame(int track);
-void openSound(SoundSource sound, int downFactor, int windowSize, 
-               char *dspName, char *mixerName);
+void openSound(SoundSource sound, int downFactor, char *dspName, char *mixerName);
 void closeSound();
 void setupMixer(double &loudness);
 void setVolume(double loudness);

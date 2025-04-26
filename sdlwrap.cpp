@@ -31,70 +31,9 @@
 
 static SDL_Surface *screen;
 
-/* Draw a randomly sized and colored box centered about (X,Y) */
-void DrawBox(SDL_Surface *screen, int X, int Y)
-{
-  static unsigned int seeded = 0;
-  int x, y, w, h, color;
-  int i;
-  Uint8 *buffer;
-
-  /* Seed the random number generator */
-  if ( seeded == 0 ) {
-    srand(time(NULL));
-    seeded = 1;
-  }
-
-  /* Get the bounds of the rectangle */
-  w = (rand()%640);
-  h = (rand()%480);
-  x = X-(w/2);
-  y = Y-(h/2);
-  color = (rand()%256);
-
-  /* Perform clipping */
-  if ( x < 0 ) {
-    w += x;
-    x = 0;
-  }
-  if ( y < 0 ) {
-    h += y;
-    y = 0;
-  }
-  if ( x+w > 640 ) {
-    w = 640-x;
-  }
-  if ( y+h > 480 ) {
-    h = 480-y;
-  }
-
-  /* Lock (8-bit surface) and load! */
-  if ( SDL_MUSTLOCK(screen) ) {
-    if ( SDL_LockSurface(screen) < 0 ) {
-      return;
-    }
-  }
-  buffer = ((Uint8 *)screen->pixels)+y*screen->pitch+x;
-  for ( i=0; i<h; ++i ) {
-    memset(buffer, color, w);
-    buffer += screen->pitch;
-  }
-  /* Assuming that SDL_MUSTLOCK(screen) only evaluates to true
-     if we are writing directly to the video hardware framebuffer.
-     This is not true of normal surfaces, just the screen surface.
-   */
-  if ( SDL_MUSTLOCK(screen) ) {
-    SDL_UnlockSurface(screen);
-  } else {
-    SDL_UpdateRect(screen, x, y, w, h);
-  }
-}
-
 SDL_Surface *CreateScreen(Uint16 w, Uint16 h, Uint8 bpp, Uint32 flags)
 {
   SDL_Surface *screen;
-  int i;
-  SDL_Color palette[256];
 
   /* Set the video mode */
   screen = SDL_SetVideoMode(w, h, bpp, flags);
@@ -106,16 +45,19 @@ SDL_Surface *CreateScreen(Uint16 w, Uint16 h, Uint8 bpp, Uint32 flags)
   //fprintf(stderr, "Screen is in %s mode\n",
   //  (screen->flags & SDL_FULLSCREEN) ? "fullscreen" : "windowed");
 
-  for ( i=0; i<256; ++i ) {
-#define BOUND(x) ((x) > 255 ? 255 : (x))
-#define PEAKIFY(x) BOUND((x) - (x)*(255-(x))/255/2)
-    palette[i].r = PEAKIFY((i&15*16));
-    palette[i].g = PEAKIFY((i&15)*16+(i&15*16)/4);
-    palette[i].b = PEAKIFY((i&15)*16);
-  }
-  SDL_SetColors(screen, palette, 0, 256);
-
   return(screen);
+}
+  
+void screenSetPalette(unsigned char *palette) {
+  SDL_Color sdlPalette[256];
+
+  for(int i=0;i<256;i++) {
+    sdlPalette[i].r = palette[i*3+0];
+    sdlPalette[i].g = palette[i*3+1];
+    sdlPalette[i].b = palette[i*3+2];
+  }
+  
+  SDL_SetColors(screen, sdlPalette, 0, 256);
 }
 
 void screenInit(int xHint,int yHint,int width,int height) 
@@ -156,6 +98,9 @@ void screenInit(int xHint,int yHint,int width,int height)
 
   outWidth = width;
   outHeight = height;
+
+  SDL_EnableUNICODE(1);
+  SDL_ShowCursor(0);
 }
 
 void screenEnd(void) {
@@ -169,7 +114,8 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   
   while ( SDL_PollEvent(&event) > 0 ) {
     switch (event.type) {
-      case SDL_MOUSEBUTTONEVENT:
+      case SDL_MOUSEBUTTONUP:
+      case SDL_MOUSEBUTTONDOWN:
         if ( event.button.state == SDL_PRESSED ) 
           mouseButtons |= 1 << event.button.button;
         else	
@@ -177,24 +123,27 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
         mouseX = event.button.x;
         mouseY = event.button.y;
 	break;
-      case SDL_MOUSEMOTIONEVENT :
+      case SDL_MOUSEMOTION :
         mouseX = event.motion.x;
         mouseY = event.motion.y;
 	break;
-      case SDL_KEYEVENT:
-        /* Ignore key releases */
-        if ( event.key.state == SDL_RELEASED ) {
-          break;
-        }
+      case SDL_KEYDOWN:
+        ///* Ignore key releases */
+        //if ( event.key.state == SDL_RELEASED ) {
+        //  break;
+        //}
         /* Ignore ALT-TAB for windows */
         if ( (event.key.keysym.sym == SDLK_LALT) ||
              (event.key.keysym.sym == SDLK_TAB) ) {
           break;
         }
 
-	keyHit = SDL_SymToASCII(&event.key.keysym, 0);
+	if (event.key.keysym.unicode > 255)
+	  break;
+
+	keyHit = event.key.keysym.unicode;
 	return;
-      case SDL_QUITEVENT:
+      case SDL_QUIT:
         keyHit = 'q';        
         return;
       default:
@@ -204,7 +153,6 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
 }
 
 int sizeUpdate(void) { return 0; }
-void sizeRequest(int w,int h) { }
 
 void screenShow(void) { 
   attempt(SDL_LockSurface(screen),"locking screen for output.");
@@ -219,7 +167,8 @@ void screenShow(void) {
     register unsigned int const r1 = *(ptr2++);
     register unsigned int const r2 = *(ptr2++);
   
-    if (r1 || r2) {
+    //if (r1 || r2) {
+#ifdef LITTLEENDIAN
       register unsigned int const v = 
           ((r1 & 0x000000f0ul) >> 4)
         | ((r1 & 0x0000f000ul) >> 8)
@@ -230,7 +179,19 @@ void screenShow(void) {
         | ((r2 & 0x0000f000ul) << 8)
         | ((r2 & 0x00f00000ul) << 4)
         | ((r2 & 0xf0000000ul)));
-    } else ptr1++;
+#else
+      register unsigned int const v = 
+          ((r2 & 0x000000f0ul) >> 4)
+        | ((r2 & 0x0000f000ul) >> 8)
+        | ((r2 & 0x00f00000ul) >> 12)
+        | ((r2 & 0xf0000000ul) >> 16);
+      *(ptr1++) = v | 
+        ( ((r1 & 0x000000f0ul) << 12)
+        | ((r1 & 0x0000f000ul) << 8)
+        | ((r1 & 0x00f00000ul) << 4)
+        | ((r1 & 0xf0000000ul)));
+#endif
+    //} else ptr1++;
   } while (--i); 
 
   SDL_UnlockSurface(screen);
