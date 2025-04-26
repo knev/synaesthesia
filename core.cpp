@@ -44,7 +44,7 @@ int bitReverser(int i) {
 
 void fft(double *x,double *y) {
   int n2 = n, n1;
-  int k, twoToTheK;
+  int twoToTheK;
   for(twoToTheK=1;twoToTheK<n;twoToTheK*=2) {
     n1 = n2;
     n2 /= 2;
@@ -68,8 +68,8 @@ void coreInit() {
   int i;
 
   for(i=0;i<n;i++) {
-    negSinTable[i] = -sin(3.141592*2/n*i);
-    cosTable[i] = cos(3.141592*2/n*i);
+    negSinTable[i] = -sin(3.141592*2.0/n*i);
+    cosTable[i] = cos(3.141592*2.0/n*i);
     bitReverse[i] = bitReverser(i);
   }
 
@@ -92,13 +92,14 @@ inline void addPixelFast(unsigned char *p,int br1,int br2) {
   if (p[1] < 255-br2) p[1] += br2; else p[1] = 255;
 }
 
-void coreGo() { 
+int coreGo() { 
   double x[n], y[n];
   double a[n], b[n];
   int clarity[n]; //Surround sound
-  int i,j, fragsLost = 0, fragsGot = 0;
+  int i,j;
 
-  getNextFragment();
+  if (-1 == getNextFragment())
+    return -1;
   
   for(i=0;i<n;i++) {
     x[i] = data[i*2];
@@ -115,8 +116,11 @@ void coreGo() {
 	   aa,bb;
     a[i] = sqrt(aa= (x1+x2)*(x1+x2) + (y1-y2)*(y1-y2) );
     b[i] = sqrt(bb= (x1-x2)*(x1-x2) + (y1+y2)*(y1+y2) );
-    clarity[i] = (int)(
-      ( (x1+x2) * (x1-x2) + (y1+y2) * (y1-y2) )/(aa+bb) * 256 );
+    if (aa+bb != 0.0)
+      clarity[i] = (int)(
+        ( (x1+x2) * (x1-x2) + (y1+y2) * (y1-y2) )/(aa+bb) * 256 );
+    else
+      clarity[i] = 0;
   } 
    
   // Asger Alstrupt's optimized 32 bit fade
@@ -126,10 +130,10 @@ void coreGo() {
   do {
     //Bytewize version was: *(ptr++) -= *ptr+(*ptr>>1)>>4;
     if (*ptr)
-      if (*ptr & 0xf0f0f0f0)
-        *(ptr++) -= ((*ptr & 0xf0f0f0f0) >> 4) + ((*ptr & 0xe0e0e0e0) >> 5);
+      if (*ptr & 0xf0f0f0f0ul)
+        *(ptr++) -= ((*ptr & 0xf0f0f0f0ul) >> 4) + ((*ptr & 0xe0e0e0e0ul) >> 5);
       else {
-        *(ptr++) = (*ptr * 14 >> 4) & 0x0f0f0f0f;
+        *(ptr++) = (*ptr * 14 >> 4) & 0x0f0f0f0ful;
             //Should be 29/32 to be consistent. Who cares. This is totally
             // hacked anyway. 
         //unsigned char *subptr = (unsigned char*)(ptr++);
@@ -188,4 +192,5 @@ void coreGo() {
       }
     }
   }
+  return 0;
 }

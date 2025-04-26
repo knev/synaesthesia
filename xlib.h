@@ -92,6 +92,8 @@ typedef struct {
     char *back;
     int truecolor;
     int linewidth;
+
+    Cursor cursor;
 } xdisplay;
 
 extern int alloc_shm_image(xdisplay * d);
@@ -127,6 +129,7 @@ extern int xsize_update(xdisplay *d,int *width,int *height);
 extern int xmouse_x(xdisplay * d);
 extern int xmouse_y(xdisplay * d);
 extern void xmouse_update(xdisplay * d);
+extern char xkeyboard_query(xdisplay * d);
 extern unsigned int xmouse_buttons(xdisplay * d);
 
 #endif				/* XAOS_X11_H */

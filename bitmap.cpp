@@ -35,6 +35,7 @@ void bitmapPut(
 
 #include "bitmap.h"
 #include "symbol.h"
+#include "font.h"
 #include "syna.h"
 
 static int span[SymbolCount][2] = {
@@ -70,7 +71,7 @@ static int span[SymbolCount][2] = {
 struct Entry {
   unsigned char blue;
   unsigned char red;
-  Entry(unsigned char b,unsigned char r) : red(r), blue(b) { }
+  Entry(unsigned char b,unsigned char r) : blue(b), red(r) { }
 };
 
 Entry maxBlue(unsigned char src,Entry dest) 
@@ -104,3 +105,21 @@ void putSymbol(int x,int y,int id,TransferType typ) {
     default      : error("Invalid transfer operation.\n");
   }
 }
+
+void putChar(unsigned char character,int x,int y,int red,int blue) {
+  Entry *ptr = ((Entry*)output) + x + y*outWidth;
+  Entry put(blue,red);
+  int i,j;
+  for(i=0;i<8;i++,ptr += outWidth-8)
+    for(j=0;j<8;j++,ptr++)
+      if (font[character*8+i] & (128>>j))
+        *ptr = put;
+}
+
+void putString(char *string,int x,int y,int red,int blue) {
+  if (x < 0 || y < 0 || y >= outHeight-8)
+    return;
+  for(;*string && x <= outWidth-8;string++,x+=8)
+    putChar((unsigned char)(*string),x,y,red,blue);
+}
+

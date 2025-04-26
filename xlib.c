@@ -26,6 +26,7 @@
 #ifdef X11_DRIVER
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/cursorfont.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -402,7 +403,8 @@ xdisplay *xalloc_display(char *s, int xHint, int yHint, int x, int y, xlibparam 
     XMapWindow(new->display, new->window);
 #if 1
     XSelectInput(new->display, new->window, 
-                 //ExposureMask | KeyPress |
+                 //ExposureMask | 
+		 KeyPress |
 		 //KeyRelease | 
                  //ConfigureRequest | 
 		 //FocusChangeMask | 
@@ -413,6 +415,17 @@ xdisplay *xalloc_display(char *s, int xHint, int yHint, int x, int y, xlibparam 
     new->pixmap = XCreatePixmap(new->display, new->window, new->width,
 				new->height, new->depth);
 #endif
+
+    {
+      XColor c;
+      Pixmap p = XCreatePixmap(new->display, new->window, 1,1,1);
+      memset(&c,0,sizeof(c));
+      new->cursor = XCreatePixmapCursor(new->display, p,p,
+        &c,&c, 0,0);
+      XDefineCursor(new->display,new->window,new->cursor);
+      XFreePixmap(new->display, p);
+    }
+
     return (new);
 }
 
@@ -523,6 +536,7 @@ void xfree_display(xdisplay * d)
     XFreePixmap(d->display, d->pixmap);
 #endif
     XDestroyWindow(d->display, d->window);
+    XFreeCursor(d->display, d->cursor);
     XCloseDisplay(d->display);
     free((void *) d->attributes);
     free((void *) d);
@@ -661,6 +675,40 @@ void xmouse_update(xdisplay * d)
     XQueryPointer(d->display, d->window, &rootreturn, &childreturn,
 		  &rootx, &rooty, &(d->mouse_x), &(d->mouse_y),
 		  &buttons); 
+}
+
+char xkeyboard_query(xdisplay * d) {
+    XEvent event;
+  
+    if (XCheckMaskEvent(d->display,KeyPressMask | KeyReleaseMask, &event)) {
+      char *str =
+        XKeysymToString(XLookupKeysym((XKeyPressedEvent*)(&event),0));
+
+      if (str) {
+        char key;
+        if (strlen(str) == 1)
+	  key = str[0];
+	else if (strcmp(str,"equal") == 0)
+	  key = '=';
+	else if (strcmp(str,"minus") == 0)
+	  key = '-';
+	else if (strcmp(str,"bracketleft") == 0)
+	  key = '[';
+	else if (strcmp(str,"bracketright") == 0)
+	  key = ']';
+	else return 0;
+	
+        if ( ((XKeyPressedEvent*)(&event))->state & ShiftMask )
+	  switch(key) {
+	    case '=' : key = '+'; break;
+	    case '[' : key = '{'; break;
+	    case ']' : key = '}'; break;
+	  }
+        return key;
+      }
+    }
+
+    return 0;
 }
 
 int xsize_update(xdisplay *d,int *width,int *height) {

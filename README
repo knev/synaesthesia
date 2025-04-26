@@ -1,4 +1,4 @@
-SYNAESTHESIA v1.3
+SYNAESTHESIA v1.4
 
 Introduction
 ============
@@ -21,21 +21,28 @@ X-Windows support has been added in version 1.3, as well as a major redesign
 of the interface. The intention is to make Synaesthesia a fully functional
 CD player, suitable for use while working.
 
+Version 1.4 adds support for play lists and viewing recorded samples.
+Support for the Simple DirectMedia Layer library has also been added
+(http://www.devolution.com/~slouken/SDL) in preperation for a Windoze port
+and partly just because its a great graphics library.
+
 Usage
 =====
 
-Compile Synaesthesia by typing "make".
+Synaesthesia should compile on Linux systems.  Compile 
+Synaesthesia by typing "make" then following the instructions displayed.
 
-You will need to run Synaesthesia as root. Xsynaesthesia can be run
-by any user providing you provide permissions on /dev/dsp, /dev/cdrom,
-and /dev/mixer.
+You will need to run Synaesthesia as root if you compiled it with
+svgalib. Other varieties can be run by any user providing you provide 
+permissions on /dev/dsp, /dev/cdrom, and /dev/mixer.
 
 Synaesthesia creates a configuration file you can edit, named
 ~/.synaesthesia.  You can edit this to set the default brightness,
-volume and X-Window position.
+volume and X-Window position and size.
 
-Run Synaesthesia or Xsynaesthesia with no parameters for further
-information on how to use it.
+Run Synaesthesia with no parameters for further information on how to 
+use it.
+
 
 Authors
 =======
@@ -43,15 +50,15 @@ Authors
 This program is free. If you like it, or have any suggestions, please
 send me (Paul Harrison) an email (pfh@yoyo.cc.monash.edu.au).
 
-Thanks to Asger Alstrup Nielsen (alstrup@diku.dk) for many great 
-suggestions, and for writing optimized 32 bit loops for fading and drawing
-to screen. 
+Thanks to Asger Alstrup Nielsen for many great suggestions, and for 
+writing optimized 32 bit loops for fading and drawing to screen.
 
-Known Bugs
-==========
+Thanks to Roger Knobbe for porting Synaesthesia to FreeBSD. (untested)
 
-Under 2.0.x kernels, the sound device prints "Sound: Recording overrun" in
-an annoying fashion.
+Thanks to Ben Gertzfield and Martin Mitchell for some small fixes to the
+CD controlling code. 
+
+Thanks to Simon Budig for an improvement to the X code.
 
 Changes
 =======
@@ -60,5 +67,9 @@ Changes
 1.2 - Fixed a bug in the ioctl calls to /dev/dsp.
 1.3 - Asger Alstrup Nielsen's optimizations added.
       Added X-Windows support.
-      More options, redesigned interface. 
+      More options, redesigned interface.
+1.4 - Bug fixes, including a great reduction in
+      "Sound: Recording overrun" warnings.
+      New command line options: play lists and piping.
+      Support for SDL.
  

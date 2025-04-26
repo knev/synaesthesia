@@ -1,4 +1,3 @@
-
 /* Synaesthesia - program to display sound graphically
    Copyright (C) 1997  Paul Francis Harrison
 
@@ -24,9 +23,13 @@
 
 #include <vga.h>
 #include <vgamouse.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
 #include "syna.h"
 
 static unsigned char *scr;
+static int keyboardDevice;
 
 void setPalette(int i,int r,int g,int b) {
   vga_setpalette(i,r/4,g/4,b/4);
@@ -56,9 +59,38 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
     setPalette(i,PEAKIFY((i&15*16)),
                  PEAKIFY((i&15)*16+(i&15*16)/4),
                  PEAKIFY((i&15)*16));
+ 
+  /* Get keyboard input descriptor */
+  if (!isatty(0)) {
+    char *tty;
+
+    //Ok, we're getting piped input, so we can't use stdin.
+    //Find out where stdout is going and read from it.
+    tty = ttyname(1);
+
+    keyboardDevice = -1;
+
+    if (tty) {
+      keyboardDevice = open(tty, O_RDONLY);
+
+      if (keyboardDevice != -1) {
+        termios term;
+        tcgetattr(keyboardDevice, &term);
+        cfmakeraw(&term);
+        tcsetattr(keyboardDevice, TCSANOW, &term);
+      }
+    }
+  } else 
+    keyboardDevice = 0;  
+  
+  if (keyboardDevice != -1)
+    fcntl(keyboardDevice,F_SETFL,O_NONBLOCK);
 }
 
 void screenEnd() {
+  if (keyboardDevice > 0)
+    close(keyboardDevice);
+  
   mouse_close();
   vga_setmode(TEXT);
 }
@@ -72,18 +104,15 @@ void sizeRequest(int width,int height) {
 }
 
 
-void mouseUpdate() {
-  mouse_update();  
+void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
+  mouse_update(); 
+  mouseX = mouse_getx();
+  mouseY = mouse_gety();
+  mouseButtons = mouse_getbutton();
+  
+  if (keyboardDevice == -1 || read(keyboardDevice, &keyHit, 1) != 1)
+    keyHit = 0;
 }
-int mouseGetX() {
-  return mouse_getx();
-}
-int mouseGetY() {
-  return mouse_gety();
-}
-int mouseGetButtons() {
-  return mouse_getbutton();
-} 
 
 void screenShow(void) {
   register unsigned long *ptr2 = (unsigned long*)output;
@@ -103,15 +132,15 @@ void screenShow(void) {
     //thus no need to write true black
     if (r1 || r2) {
       register unsigned int const v = 
-          ((r1 & 0x000000f0) >> 4)
-        | ((r1 & 0x0000f000) >> 8)
-        | ((r1 & 0x00f00000) >> 12)
-        | ((r1 & 0xf0000000) >> 16);
+          ((r1 & 0x000000f0ul) >> 4)
+        | ((r1 & 0x0000f000ul) >> 8)
+        | ((r1 & 0x00f00000ul) >> 12)
+        | ((r1 & 0xf0000000ul) >> 16);
       *(ptr1++) = v | 
-        ( ((r2 & 0x000000f0) << 12)
-        | ((r2 & 0x0000f000) << 8)
-        | ((r2 & 0x00f00000) << 4)
-        | ((r2 & 0xf0000000)));
+        ( ((r2 & 0x000000f0ul) << 12)
+        | ((r2 & 0x0000f000ul) << 8)
+        | ((r2 & 0x00f00000ul) << 4)
+        | ((r2 & 0xf0000000ul)));
     } else {
       ptr1++;
     }  

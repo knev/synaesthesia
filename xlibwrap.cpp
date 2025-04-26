@@ -32,7 +32,6 @@ extern "C" {
 static xlibparam xparams = { 0, 0, 0 };
 static xdisplay *d;
 
-static unsigned char *scr;
 static int lowColor;
 static unsigned char mapping[64];
 
@@ -47,7 +46,7 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint) {
   outWidth = widthHint;
   outHeight = heightHint;
 
-  XMoveWindow(d->display,d->window,xHint,yHint);
+  //XMoveWindow(d->display,d->window,xHint,yHint);
 
   #define BOUND(x) ((x) > 255 ? 255 : (x))
   #define PEAKIFY(x) BOUND((x) - (x)*(255-(x))/255/2)
@@ -97,25 +96,18 @@ void sizeRequest(int width,int height) {
   }
 }
 
-void mouseUpdate() {
+void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {
   xmouse_update(d);
-}
-int mouseGetX() {
-  return xmouse_x(d);
-}
-int mouseGetY() {
-  return xmouse_y(d);
-}
-int mouseGetButtons() {
-  return xmouse_buttons(d);
+  mouseX = xmouse_x(d);
+  mouseY = xmouse_y(d);
+  mouseButtons = xmouse_buttons(d);
+  keyHit = xkeyboard_query(d);
 }
  
-void screenShow(void) {
+void screenShow(void) { 
   register unsigned long *ptr2 = (unsigned long*)output;
   unsigned long *ptr1 = (unsigned long*)d->back;
   int i = outWidth*outHeight/4;
-  // Asger Alstrup Nielsen's (alstrup@diku.dk)
-  // optimized 32 bit screen loop
   if (lowColor)
     do {
       register unsigned int const r1 = *(ptr2++);
@@ -123,33 +115,31 @@ void screenShow(void) {
     
       if (r1 || r2) {
         register unsigned int const v = 
-             mapping[((r1&0xe0)>>5)|((r1&0xe000)>>10)]
-            |mapping[((r1&0xe00000)>>21)|((r1&0xe0000000)>>26)]*256U; 
+             mapping[((r1&0xe0ul)>>5)|((r1&0xe000ul)>>10)]
+            |mapping[((r1&0xe00000ul)>>21)|((r1&0xe0000000ul)>>26)]*256U; 
         *(ptr1++) = v | 
-             mapping[((r2&0xe0)>>5)|((r2&0xe000)>>10)]*65536U
-            |mapping[((r2&0xe00000)>>21)|((r2&0xe0000000)>>26)]*16777216U; 
-          ( ((r2 & 0x000000e0) << 0-5 + 16)
-          | ((r2 & 0x0000e000) << 3-13 + 16)
-          | ((r2 & 0x00e00000) << 8-21 + 16)
-          | ((r2 & 0xe0000000) >> 29-12 - 16));
+             mapping[((r2&0xe0ul)>>5)|((r2&0xe000ul)>>10)]*65536U
+            |mapping[((r2&0xe00000ul)>>21)|((r2&0xe0000000ul)>>26)]*16777216U; 
       } else ptr1++;
     } while (--i); 
   else
     do {
+      // Asger Alstrup Nielsen's (alstrup@diku.dk)
+      // optimized 32 bit screen loop
       register unsigned int const r1 = *(ptr2++);
       register unsigned int const r2 = *(ptr2++);
     
       if (r1 || r2) {
         register unsigned int const v = 
-            ((r1 & 0x000000f0) >> 4)
-          | ((r1 & 0x0000f000) >> 8)
-          | ((r1 & 0x00f00000) >> 12)
-          | ((r1 & 0xf0000000) >> 16);
+            ((r1 & 0x000000f0ul) >> 4)
+          | ((r1 & 0x0000f000ul) >> 8)
+          | ((r1 & 0x00f00000ul) >> 12)
+          | ((r1 & 0xf0000000ul) >> 16);
         *(ptr1++) = v | 
-          ( ((r2 & 0x000000f0) << 12)
-          | ((r2 & 0x0000f000) << 8)
-          | ((r2 & 0x00f00000) << 4)
-          | ((r2 & 0xf0000000)));
+          ( ((r2 & 0x000000f0ul) << 12)
+          | ((r2 & 0x0000f000ul) << 8)
+          | ((r2 & 0x00f00000ul) << 4)
+          | ((r2 & 0xf0000000ul)));
       } else ptr1++;
     } while (--i); 
   

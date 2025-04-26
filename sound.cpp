@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -47,8 +48,8 @@ static int cdDevice;
 
 static int trackCount = 0, *trackFrame = 0;
 
-void cdOpen(void) {
-  attempt(cdDevice = open("/dev/cdrom",O_RDONLY),"talking to CD");
+void cdOpen(char *cdromName) {
+  attempt(cdDevice = open(cdromName,O_RDONLY),"talking to CD device");
 }
 
 void cdClose(void) {
@@ -83,8 +84,12 @@ void getTrackInfo(void) {
     cdrom_tocentry cdTocentry;
     cdTocentry.cdte_format = CDROM_MSF;
     cdTocentry.cdte_track  = (i == trackCount ? CDROM_LEADOUT : i+1);
+
+    //Bug fix: thanks to Ben Gertzfield  (9/7/98)
+    //Leadout track is sometimes reported as data.
+    //Added check for this.
     if (-1 == ioctl(cdDevice, CDROMREADTOCENTRY, & cdTocentry) ||
-        (cdTocentry.cdte_ctrl & CDROM_DATA_TRACK))
+        (i != trackCount && (cdTocentry.cdte_ctrl & CDROM_DATA_TRACK)))
       trackFrame[i] = (i==trackCount?0:trackFrame[i+1]);
     else
       trackFrame[i] = cdTocentry.cdte_addr.msf.minute*60*CD_FRAMES+
@@ -97,21 +102,33 @@ int cdGetTrackCount(void) {
   return trackCount;
 }
 int cdGetTrackFrame(int track) {
-  if (track <= 1 || track > trackCount+1)
+  if (!trackFrame)
+    return 0; 
+  else if (track <= 1 || track > trackCount+1)
     return trackFrame[0];
   else
     return trackFrame[track-1]; 
 }
 
-void cdPlay(int frame) {
+void cdPlay(int frame, int endFrame) {
   cdrom_msf msf;
   if (frame < 1) frame = 1;
+  if (endFrame < 1) endFrame = trackFrame[trackCount];
+
+  //Some CDs can't change tracks unless not playing.
+  // (Sybren Stuvel)
+  cdStop();
+  
   msf.cdmsf_min0 = frame / (60*CD_FRAMES);
   msf.cdmsf_sec0 = frame / CD_FRAMES % 60;
   msf.cdmsf_frame0 = frame % CD_FRAMES;
-  msf.cdmsf_min1 = trackFrame[trackCount] / (60*CD_FRAMES);
-  msf.cdmsf_sec1 = trackFrame[trackCount] / CD_FRAMES % 60;
-  msf.cdmsf_frame1 = trackFrame[trackCount] % CD_FRAMES;
+
+  //Bug fix: thanks to Martin Mitchell
+  //An out by one error that affects some CD players. 
+  //Have to use endFrame-1 rather than endFrame (9/7/98)
+  msf.cdmsf_min1 = (endFrame-1) / (60*CD_FRAMES);
+  msf.cdmsf_sec1 = (endFrame-1) / CD_FRAMES % 60;
+  msf.cdmsf_frame1 = (endFrame-1) % CD_FRAMES;
   attemptNoDie(ioctl(cdDevice, CDROMPLAYMSF, &msf),"playing CD");
 }
 
@@ -135,6 +152,7 @@ void cdGetStatus(int &track, int &frames, SymbolID &state) {
     case CDROM_AUDIO_PLAY      : state = Play; break;
     case CDROM_AUDIO_COMPLETED : state = Stop; break;
     case CDROM_AUDIO_NO_STATUS : state = Stop; break;
+    case CDROM_AUDIO_INVALID   : state = Stop; break;
     default : state = NoCD; break;
   }
 
@@ -168,64 +186,101 @@ void cdCloseTray(void) {
 
 /* Sound Recording ================================================= */
 
-static int configUseCD, device;
+static SoundSource source;
+static int inFrequency, downFactor, windowSize, pipeIn, device;
+static short *dataIn;
+static char *mixer;
 
 void setupMixer(double &loudness) {
-  int device = open("/dev/mixer",O_WRONLY);
+  int device = open(mixer,O_WRONLY);
   if (device == -1) 
-    warning("opening /dev/mixer");
+    warning("opening mixer device");
   else {
-    int blah = (configUseCD ? SOUND_MASK_CD : SOUND_MASK_LINE + SOUND_MASK_MIC);
-    attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_RECSRC,&blah),"writing to mixer");
-    
-    if (configUseCD) {
+    if (source != SourcePipe) {
+      int blah = (source == SourceCD ? SOUND_MASK_CD : SOUND_MASK_LINE + SOUND_MASK_MIC);
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_RECSRC,&blah),"writing to mixer");
+    }
+
+    if (source == SourceCD) {
       int volume;
       attemptNoDie(ioctl(device,SOUND_MIXER_READ_CD,&volume),"writing to mixer");
       loudness = ((volume&0xff) + volume/256) / 200.0; 
-    } else {
+    } else if (source == SourceLine) {
       int volume = 100*256 + 100;
       attemptNoDie(ioctl(device,SOUND_MIXER_READ_LINE,&volume),"writing to mixer");
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_MIC,&volume),"writing to mixer");
+      //attemptNoDie(ioctl(device,SOUND_MIXER_READ_MIC,&volume),"writing to mixer");
+      loudness = ((volume&0xff) + volume/256) / 200.0; 
+    } else 
       loudness = 1.0;
-    }
     close(device);
   }
 }
 
 void setVolume(double loudness) {
-  int device = open("/dev/mixer",O_WRONLY);
+  int device = open(mixer,O_WRONLY);
   if (device == -1) 
-    warning("opening /dev/mixer");
+    warning("opening mixer device");
   else {
     int scaledLoudness = int(loudness * 100.0);
     if (scaledLoudness < 0) scaledLoudness = 0;
     if (scaledLoudness > 100) scaledLoudness = 100;
     scaledLoudness = scaledLoudness*256 + scaledLoudness;
-    if (configUseCD) {
+    if (source == SourceCD) {
       attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_CD,&scaledLoudness),"writing to mixer");
-    } else {
+    } else if (source == SourceLine) {
       attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_LINE,&scaledLoudness),"writing to mixer");
       attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_MIC,&scaledLoudness),"writing to mixer");
+    } else {
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_PCM,&scaledLoudness),"writing to mixer");
     }
     close(device);
   }
 } 
 
-void openSound(int param) {
-  configUseCD = param;
-  
+void openSound(SoundSource source, int inFrequency, int windowSize, char *dspName, 
+               char *mixerName) {
+  ::source = source;
+  ::inFrequency = inFrequency; 
+  ::windowSize = windowSize;
+  mixer = mixerName;
+  downFactor = inFrequency / frequency; 
+  if (downFactor <= 0)
+    downFactor = 1;
+
   int format, stereo, fragment, fqc;
- 
-  attempt(device = open("/dev/dsp",O_RDONLY),"opening /dev/dsp");
+
+  if (source == SourcePipe)
+    attempt(device = open(dspName,O_WRONLY),"opening dsp device");
+  else
+    attempt(device = open(dspName,O_RDONLY),"opening dsp device");
     
   //Probably not needed
   //attemptNoDie(ioctl(device,SNDCTL_DSP_RESET,0),"reseting dsp");
   format = AFMT_S16_LE;
-  fqc = frequency;
+  fqc = (source == SourcePipe ? inFrequency : frequency);
   stereo = 1;
-  fragment = 0x00020000 + (m-overlap+1); //2 fragments of size 2*(2^(m-overlap+1)) bytes
+  
+  int logWindowSize = -1, tmp = windowSize*downFactor;
+  while(tmp) {
+    tmp /= 2;
+    logWindowSize++;
+  }
+
+  if (source == SourcePipe)
+    fragment = 0x00020000 + (m-overlap+1)+logWindowSize;
+                                                 //Soundcard should read in windowSize 
+                                                 // blocks of sound before blocking
+  else
+    //fragment = 0x00020000 + (m-overlap+1); //2 fragments of size 2*(2^(m-overlap+1)) bytes
+  
+  //Added extra fragments to allow recording overrun (9/7/98)
+    fragment = 0x00080000 + (m-overlap+1); //8 fragments of size 2*(2^(m-overlap+1)) bytes
+  
+  
+  
+  
   //Was 0x00010000 + m; 
-    
+
   attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment");
   attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
   if (format != AFMT_S16_LE) error("setting format (2)");
@@ -233,168 +288,56 @@ void openSound(int param) {
   attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency");
    
   data = new short[n*2];  
+
+  if (source == SourcePipe) {
+    dataIn = new short[n*2*downFactor*windowSize];
+    memset(dataIn,0,n*4*downFactor*windowSize);
+    pipeIn = dup(0);
+    close(0);
+  }
 }
 
 void closeSound() {
   delete data;
+  if (source == SourcePipe) {
+    delete dataIn;
+    close(pipeIn);
+  }
   close(device);
 }
 
-void getNextFragment(void) {
-  if (recSize != n)
-    memmove((char*)data,(char*)data+recSize*4,(n-recSize)*4);
-
-  read(device,(char*)data+n*4-recSize*4, recSize*4);
-}
-
-
-/* Old sound stuff. Unneseccary. Device reads ahead instead of blocking. */
-#if 0
-static int semaphore; /* readyToRead, recordNow */
-#define SEMREADY 0
-#define SEMRECORD 1
-static int sharedMem;
-static int configUseCD;
-
-void setupMixer(double &loudness) {
-  int device = open("/dev/mixer",O_WRONLY);
-  if (device == -1) 
-    warning("opening /dev/mixer");
-  else {
-    int blah = (configUseCD ? SOUND_MASK_CD : SOUND_MASK_LINE + SOUND_MASK_MIC);
-    attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_RECSRC,&blah),"writing to mixer");
-    
-    if (configUseCD) {
-      int volume;
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_CD,&volume),"writing to mixer");
-      loudness = ((volume&0xff) + volume/256) / 200.0; 
-    } else {
-      int volume = 100*256 + 100;
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_LINE,&volume),"writing to mixer");
-      attemptNoDie(ioctl(device,SOUND_MIXER_READ_MIC,&volume),"writing to mixer");
-      loudness = 1.0;
+int getNextFragment(void) {
+  if (source == SourcePipe) { 
+    int i,j;
+    write(device, (char*)dataIn, n*4*downFactor*windowSize); 
+      
+    int position = 0, remaining = n*4*downFactor*windowSize, result;
+    while(remaining > 0) {
+      result = read(pipeIn, ((char*)dataIn)+position, remaining);
+      if (result <= 0)
+        return -1;
+      
+      position += result;
+      remaining -= result;
     }
-    close(device);
-  }
-}
-
-void setVolume(double loudness) {
-  int device = open("/dev/mixer",O_WRONLY);
-  if (device == -1) 
-    warning("opening /dev/mixer");
-  else {
-    int scaledLoudness = int(loudness * 100.0);
-    if (scaledLoudness < 0) scaledLoudness = 0;
-    if (scaledLoudness > 100) scaledLoudness = 100;
-    scaledLoudness = scaledLoudness*256 + scaledLoudness;
-    if (configUseCD) {
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_CD,&scaledLoudness),"writing to mixer");
-    } else {
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_LINE,&scaledLoudness),"writing to mixer");
-      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_MIC,&scaledLoudness),"writing to mixer");
-    }
-    close(device);
-  }
-} 
-
-void killIPC() {
-  union semun zero;
-  zero.val = 0;
-  semctl(semaphore,0,IPC_RMID,zero);
-  shmdt((char*)data);
-  shmctl(sharedMem,IPC_RMID,0);
-}
-
-int mySemop(int semid,struct sembuf *sops,unsigned nsops) {
-  int result;
-  for(;;) {
-    result = semop(semid,sops,nsops);
-    if (result != -1 || errno != EINTR)
-      return result;
-  }
-  return 0; /* Should never happen. */
-}
-
-void restartSound() {
-  int device, format, stereo, fragment, fqc;
-  int parentPID = getpid();
- 
-  attempt(semaphore = semget(IPC_PRIVATE,2,0700),"creating semaphore");
-  
-  union semun val;
-  val.val = 0;
-  semctl(semaphore, SEMREADY, SETVAL, val); 
-  val.val = 1;
-  semctl(semaphore, SEMRECORD, SETVAL, val); 
-  atexit(killIPC);
- 
-
-  attempt(sharedMem = shmget(IPC_PRIVATE,n*4,0777),"creating shared memory");
-  
-  if (fork() == 0) {
-
-    attempt(device = open("/dev/dsp",O_RDONLY),"opening /dev/dsp");
     
-    //Probably not needed
-    //attemptNoDie(ioctl(device,SNDCTL_DSP_RESET,0),"reseting dsp");
-    format = AFMT_S16_LE;
-    fqc = frequency;
-    stereo = 1;
-    fragment = 0x00020000 + (m-overlap+1); //2 fragments of size 2*(2^(m-overlap+1)) bytes
-    //Was 0x00010000 + m; 
-    
-    attemptNoDie(ioctl(device,SNDCTL_DSP_SETFRAGMENT,&fragment),"setting fragment");
-    attempt(ioctl(device,SNDCTL_DSP_SETFMT,&format),"setting format");
-    if (format != AFMT_S16_LE) error("setting format (2)");
-    attempt(ioctl(device,SNDCTL_DSP_STEREO,&stereo),"setting stereo");
-    attemptNoDie(ioctl(device,SNDCTL_DSP_SPEED,&fqc),"setting frequency");
-    
-    attempt(data = (short*)shmat(sharedMem,0,0),"attaching shared memory");
-    
-    unsigned char tempBuf[n*4]; 
-    
-    for(;;) {
-      struct sembuf wait = { SEMRECORD, -1, 0 };
-      if (-1 == mySemop(semaphore, &wait, 1)) {
-        break; 
-      }
+    for(i=0,j=0;i<n;i++,j+=downFactor) 
+      ((long*)data)[i] = ((long*)dataIn)[j]; 
+  } else {
+    int i;
+    count_info info;
+    if (-1 == ioctl(device,SNDCTL_DSP_GETIPTR,&info))
+      info.blocks = 1;
+    if (info.blocks > 8 || info.blocks < 1) /* Sanity check */
+      info.blocks = 1;
 
+    for(i=0;i<info.blocks;i++) {
       if (recSize != n)
         memmove((char*)data,(char*)data+recSize*4,(n-recSize)*4);
 
       read(device,(char*)data+n*4-recSize*4, recSize*4);
-      
-      struct sembuf ready = { SEMREADY, 1, 0 };
-      if (-1 == mySemop(semaphore, &ready, 1)) { 
-        break; 
-      }
     }
-    
-    exit(0);
   }
-
-  attempt(data = (short*)shmat(sharedMem,0,0),"attaching shared memory");
+  return 0;
 }
 
-void forkOffRecorder(int param) {
-  configUseCD = param;
-  restartSound();
-}
-
-void getNextFragment(void) {
-  struct sembuf ready = { SEMREADY, -1, 0 };
-  attempt(mySemop(semaphore, &ready, 1),"talking to sound process"); 
-  
-  /*{
-    sleep(3); //Give time for sound process to die
-    restartSound();
-    attempt(mySemop(semaphore, &ready, 1),"talking to sound process"); 
-  }*/
-}
-
-void doneWithFragment(void) {
-  struct sembuf record = { SEMRECORD, 1, 0 };
-  mySemop(semaphore, &record, 1); 
-}
-
-#endif

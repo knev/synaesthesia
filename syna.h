@@ -41,39 +41,48 @@
 
 #define PROGNAME "synaesthesia"
 
+#ifdef __FreeBSD__
+
+typedef unsigned short sampleType;
+
+#else
+
+typedef short sampleType;
+
+#ifndef __linux__
+
+#warning This target has not been tested!
+
+#endif
+#endif
+
 void error(char *str);
-#define attempt(x,y) if ((int)(x) == -1) error(y)
+void inline attempt(int x,char *y) { if (x == -1) error(y); }  
 void warning(char *str);
-#define attemptNoDie(x,y) if ((int)(x) == -1) warning(y)
+void inline attemptNoDie(int x,char *y) { if (x == -1) warning(y); } 
 
 #define n (1<<m)
 #define recSize (1<<m-overlap)
 
 /* core */
-extern volatile short *data;
+extern volatile sampleType *data;
 extern unsigned char *output;
 extern int outWidth, outHeight;
 extern int brightFactor;
 
 void coreInit();
-void coreGo();
+int coreGo();
 
 void screenInit(int xHint,int yHint,int widthHint,int heightHint);
 void screenEnd(void);
 void screenShow(void);
 void sizeRequest(int width,int height);
 int sizeUpdate(void);
-void mouseUpdate(void);
-int mouseGetX(void);
-int mouseGetY(void);
-int mouseGetButtons(void);
+
+void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit);
 
 int processUserInput(void); //True == abort now
 void showOutput(void);
-
-void error(char *str); //Display error and exit
-void warning(char *str); //Display error
-
 
 /* bitmap */
 enum SymbolID {
@@ -92,12 +101,15 @@ enum TransferType {
 
 void putSymbol(int x,int y,int id,TransferType typ);
 
+void putString(char *string,int x,int y,int red,int blue);
 
 /* sound */
-void cdOpen(void);
+enum SoundSource { SourceLine, SourceCD, SourcePipe };
+
+void cdOpen(char *cdromName);
 void cdClose(void);
 void cdGetStatus(int &track, int &frames, SymbolID &state);
-void cdPlay(int track); 
+void cdPlay(int trackFrame, int endFrame=-1); 
 void cdStop(void);
 void cdPause(void);
 void cdResume(void);
@@ -105,9 +117,10 @@ void cdEject(void);
 void cdCloseTray(void);
 int cdGetTrackCount(void);
 int cdGetTrackFrame(int track);
-void openSound(int configUseCD);
+void openSound(SoundSource sound, int downFactor, int windowSize, 
+               char *dspName, char *mixerName);
 void closeSound();
 void setupMixer(double &loudness);
 void setVolume(double loudness);
-void getNextFragment(void);
+int getNextFragment(void);
 
