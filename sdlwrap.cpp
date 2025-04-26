@@ -123,8 +123,8 @@ void screenInit(int xHint,int yHint,int width,int height)
   Uint32 videoflags;
 
   /* Initialize SDL */
-  if ( SDL_Init() < 0 ) {
-    char str[200];
+  if ( SDL_Init(SDL_INIT_VIDEO) < 0 ) {
+    char str[1000];
     sprintf(str, "initializing SDL library: %s\n",SDL_GetError());
     error(str);
   }
@@ -164,9 +164,10 @@ void screenEnd(void) {
 
 void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit) {    
   SDL_Event event;
+ 
+  keyHit = 0;
   
-  while ( SDL_NumEvents() > 0 ) {
-    SDL_PullEvent(&event);
+  while ( SDL_PollEvent(&event) > 0 ) {
     switch (event.type) {
       case SDL_MOUSEBUTTONEVENT:
         if ( event.button.state == SDL_PRESSED ) 

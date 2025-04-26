@@ -1,7 +1,7 @@
 
-CC=g++ -O6 -ffast-math -funroll-loops -Wall
-#CC=g++ -g -pg -O4 -DPROFILE
-#CC=g++ -g
+#CC=g++ -O6 -ffast-math -funroll-loops -Wall -D_REENTRANT
+#CC=g++ -g -pg -O4 -DPROFILE -D_REENTRANT
+CC=g++ -g -D_REENTRANT
 
 #Uncomment these lines to enable X shared memory extensions
 # These should give a slightly better frame rate BUT there is a memory leak
@@ -31,7 +31,7 @@ svga : core.o main.o svga.o sound.o bitmap.o
 x    : core.o main.o xlibwrap.o xlib.o sound.o bitmap.o
 	$(CC) core.o main.o xlibwrap.o xlib.o sound.o bitmap.o -o synaesthesia -lm -L /usr/X11R6/lib -lX11 $(XEXT) 
 sdl  : core.o main.o sdlwrap.o sound.o bitmap.o
-	$(CC) core.o main.o sdlwrap.o sound.o bitmap.o -o synaesthesia -lm -lSDL -ldl
+	$(CC) core.o main.o sdlwrap.o sound.o bitmap.o -o synaesthesia -lm -lSDL -ldl -lpthread
 
 clean :
 	rm -f *.o synaesthesia
