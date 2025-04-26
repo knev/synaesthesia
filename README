@@ -1,7 +1,14 @@
 SYNAESTHESIA for Windows
+Version 1.2
 
-This is the first public release of the Windows version of
-Synaesthesia, ported from Linux by Nils Desle.
+This is the second public release of the Windows version of Synaesthesia,
+originally written by Paul Harrison, ported from Linux to Windows by
+Nils Desle. This version is mostly a bug fix release.
+
+The operation of this program should be fairly self explanatory. You
+play music, it shows pretty pictures. You don't play music, it doesn't
+show pretty pictures. One minor point: To switch to full screen mode,
+press the "Enter" key.
 
 For further notes, see the file "Windows addendum.txt".
 
@@ -10,7 +17,8 @@ Send comments or queries to me (pfh@yoyo.cc.monash.edu.au) or Nils
 
 Due to circumstances beyond my control I haven't been able to merge
 this version with the Linux version yet. Expect a combined Linux,
-Windows and FreeBSD version within a few months.
+Windows and FreeBSD version, er, eventually. Before Halley's comet next
+arrives, say.
 
 Below is the original Linux README.
 

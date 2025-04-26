@@ -2,7 +2,7 @@
    Copyright (C) 1997  Paul Francis Harrison
 
   Windows95 port (mapping to Prometheus Truecolor library) (C) 1998 
-  Nils Desle, ndesle@yahoo.com
+  Nils Desle, ndesle@hotmail.com
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of the GNU General Public License as published by the
@@ -27,37 +27,37 @@
 #ifdef WIN32
 #include <windows.h>
 #endif
-#include "ptc.h"
+#include "ptc\ptc.h"
 #include "syna.h"
 
 PTC *ptc;
 Palette pal;
 Surface *vscreen;
 int pitch;
+int screenWidth, screenHeight;
 
 #ifdef WIN32
 HHOOK keyboard_hook;
 HHOOK mouse_hook;
 
-char keyboard_buffer[128];
-volatile int keyboard_head;
-volatile int keyboard_tail;
+extern volatile char keyboard_buffer[128];
+extern volatile int keyboard_head;
+extern volatile int keyboard_tail;
 
 extern HINSTANCE ghInstance;
 
-int my_mouseX;
-int my_mouseY;
-bool my_lbutton;
-bool my_rbutton;
+extern volatile int my_mouseX;
+extern volatile int my_mouseY;
+extern volatile bool my_lbutton;
+extern volatile bool my_rbutton;
 
 HWND my_window;
 
-bool windowed;
-bool altDn = false;
-volatile bool switchModeWhenPossible=false;
+extern volatile bool windowed;
+//extern volatile bool altDn;
+extern volatile bool switchModeWhenPossible;
 
-unsigned char keyarray[256];
-
+/*
 LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam)
 {
   if(code < 0)
@@ -81,15 +81,7 @@ LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam)
 	{
 		switchModeWhenPossible = true;
 	}
-
-	//			keycode = MapVirtualKey(wParam,2);
-
-	unsigned short s_keycode;
-	GetKeyboardState(keyarray);
-	ToAscii(wParam,(lParam>>16) & 0x80FF, keyarray, &s_keycode, 0);
-  	keycode = s_keycode;
-
-	if(((lParam & 0x80000000) == 0) && (keycode != 0))	// only check keypresses, not releases
+	else
 	{
 		keyboard_buffer[keyboard_tail] = keycode;
 		keyboard_tail++;
@@ -102,7 +94,7 @@ LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam)
   
   return 0;
 }
-
+*/
 
 bool my_kbhit()
 {
@@ -117,7 +109,7 @@ unsigned char my_getch()
 {
   unsigned char keycode;
 
-  while(keyboard_tail == keyboard_head);	// nasty blocking call!! You don't want to call getch() if no char is available, trust me!
+  while(keyboard_tail == keyboard_head);	// nasty block!! Never call getch() if no char is available!
   
   keycode = keyboard_buffer[keyboard_head];
   keyboard_buffer[keyboard_head]=0;
@@ -226,16 +218,16 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam)
 
 void modeInit(bool bWindowed, int xHint,int yHint,int widthHint,int heightHint)
 {
-
-// for now, I ignore the width and height. Mode is always 320x200
+        screenWidth = widthHint;
+        screenHeight = heightHint;
 
 	if(bWindowed)
 	{
-		ptc = new PTC("GDI",320,200,VIRTUAL8);
+                ptc = new PTC("GDI",widthHint,heightHint,VIRTUAL8);
 	}
 	else
 	{
-		ptc = new PTC(320,200,VIRTUAL8);
+                ptc = new PTC(widthHint,heightHint,VIRTUAL8);
 	}
 
 	if(!ptc->ok())
@@ -247,7 +239,7 @@ void modeInit(bool bWindowed, int xHint,int yHint,int widthHint,int heightHint)
 	ptc->SetTitle("synaesthesia");
 
 	// create main drawing surface
-	vscreen = new Surface(*ptc,320,200,INDEX8);
+        vscreen = new Surface(*ptc,widthHint,heightHint,INDEX8);
 	if (!vscreen->ok())
 	{
 		// failure
@@ -292,14 +284,14 @@ void modeInit(bool bWindowed, int xHint,int yHint,int widthHint,int heightHint)
 
 	keyboard_head=0;
 	keyboard_tail=0;
-	memset(keyboard_buffer,0,128);
-	keyboard_hook = SetWindowsHookEx(WH_KEYBOARD,(HOOKPROC)&KeyboardHook,ghInstance,NULL);
+        memset((void*)keyboard_buffer,0,128);
+        //keyboard_hook = SetWindowsHookEx(WH_KEYBOARD,(HOOKPROC)&KeyboardHook,ghInstance,NULL);
 
 	my_mouseX = 0;
 	my_mouseY = 0;
 	my_lbutton = false;
 	my_rbutton = false;
-	mouse_hook = SetWindowsHookEx(WH_MOUSE,(HOOKPROC)&MouseHook,ghInstance,NULL);
+        //mouse_hook = SetWindowsHookEx(WH_MOUSE,(HOOKPROC)&MouseHook,ghInstance,NULL);
 
 #endif
 }
@@ -314,8 +306,8 @@ void screenInit(int xHint,int yHint,int widthHint,int heightHint)
 
 void screenEnd() 
 {
-  UnhookWindowsHookEx(keyboard_hook);
-  UnhookWindowsHookEx(mouse_hook);
+  //UnhookWindowsHookEx(keyboard_hook);
+  //UnhookWindowsHookEx(mouse_hook);
 
   ptc->Close();
   delete vscreen;
@@ -331,7 +323,8 @@ int sizeUpdate()
 
 void sizeRequest(int width,int height) 
 {
-	// dunno what this is supposed to do, so I ignore it.
+  if (width != 320 || height != 200)
+    warning("resizing screen.");
 }
 
 
@@ -355,8 +348,8 @@ void inputUpdate(int &mouseX,int &mouseY,int &mouseButtons,char &keyHit)
 
 void switchMode()
 {
-	UnhookWindowsHookEx(keyboard_hook);
-	UnhookWindowsHookEx(mouse_hook);
+        //UnhookWindowsHookEx(keyboard_hook);
+        //UnhookWindowsHookEx(mouse_hook);
 
 	ptc->Close();
 	delete vscreen;
@@ -370,7 +363,7 @@ void switchMode()
 	{
 		windowed=true;
 	}
-	modeInit(windowed, 0, 0, 320, 200);
+        modeInit(windowed, 0, 0, screenWidth, screenHeight);
 }
 
 
@@ -396,10 +389,10 @@ void screenShow(void)
 
   int x,y;
   
-  for(y=0;y<200;y++)
+  for(y=0;y<screenHeight;y++)
   {
 	ptr1 = (unsigned long*) firstline;
-	for(x=0;x<(320/4);x++)
+        for(x=0;x<(screenWidth/4);x++)
 	{
 
       register unsigned int const r1 = *(ptr2++);
@@ -433,7 +426,7 @@ void screenShow(void)
   vscreen->Unlock();
   vscreen->Update();
 
-  if(switchModeWhenPossible)			// this does the fullscreen/windowed switching
+  if(switchModeWhenPossible)
   {
 	  switchMode();
 	  switchModeWhenPossible = false;

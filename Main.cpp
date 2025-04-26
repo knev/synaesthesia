@@ -145,19 +145,12 @@ int main(int argc, char **argv)
         sscanf(line,"dsp %s",dspName);
         sscanf(line,"mixer %s",mixerName);
         sscanf(line,"cdrom %s",cdromName);
-#else
-        sscanf(line,"wave %s",dspName);
-        sscanf(line,"cdrom %s",cdromName);
-#endif
+#endif        
       }
       fclose(f);
     } else if ((f = fopen(fileName,"wt"))) {
       fprintf(f,"# Synaesthesia config file\n\n"
-#ifndef WIN32
-			  "# Window position and size under X:\n"
-#else
-			  "# Window position and size (size not functional yet):\n"
-#endif
+              "# Window position and size under X:\n"
               "x 10\ny 30\nwidth 320\nheight 200\n\n"
               "# Brightness:\n"
               "brightness 0.125\n\n"
@@ -168,11 +161,6 @@ int main(int argc, char **argv)
 	      "dsp /dev/dsp\n"
 	      "mixer /dev/mixer\n"
 	      "cdrom /dev/cdrom\n"
-#else
-	      "# Devices (for computers with more than one soundcard and/or CD-Rom player)\n"
-	      "wave 0\n"
-	      "cdrom 0\n"
-		  "mixer 0\n"
 #endif
 				);
                 
@@ -210,7 +198,11 @@ int main(int argc, char **argv)
   playListLength = 0;
   
 #ifdef WIN32
-	soundSource = SourceCD;		// doesn't matter since we don't set the mixer in Win32 anyway
+	// for now, only support CD-in, no playlists, no pipes (never pipes!)
+  // WinMain has some sort of command-line possible, but I think I'll just
+  // put in a dialog or something.
+
+	soundSource = SourceCD;
 #else
   if (strcmp(argv[1],"line") == 0) soundSource = SourceLine;
   else if (strcmp(argv[1],"cd") == 0) soundSource = SourceCD;
@@ -304,9 +296,10 @@ int main(int argc, char **argv)
   if (timer > 10)
   {
 #ifdef WIN32
-    char buf[256];
-	sprintf(buf,"Frames per second: %f", double(frames) / timer);
-	::MessageBox(NULL,buf,PROGNAME,MB_OK);
+//Annoying
+//    char buf[256];
+//        sprintf(buf,"Frames per second: %f", double(frames) / timer);
+//        ::MessageBox(NULL,buf,PROGNAME,MB_OK);
 #else
     printf("Frames per second: %f\n", double(frames) / timer);
 #endif
@@ -501,6 +494,7 @@ int showTracks() {
   if (state == Exit || state == NoCD || state == Open) return -1;
 
   int count = cdGetTrackCount();
+  if (count == 0) return -1;
   int i, x, retVal = -1,
       step = (rowMaxWidth - leftColWidth - sliderBorder*2 - sliderWidth/4) / count;
   for(i=0;i<count;i++) {
@@ -529,6 +523,7 @@ void processTracks() {
   if (state == Exit || state == NoCD || state == Open) return;
 
   int count = cdGetTrackCount();
+  if (count == 0) return;
   int i, x,
       step = (rowMaxWidth - leftColWidth - sliderBorder*2 - sliderWidth/4) / count;
   for(i=0;i<count;i++) {

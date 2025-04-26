@@ -1,10 +1,8 @@
 /* Synaesthesia - program to display sound graphically
    Copyright (C) 1997  Paul Francis Harrison
 
-   Windows95/NT sound and CD-ROM routines, 
-   (C) 1998 Nils Desle (ndesle@yahoo.com)
-
-   Mixer code (C) Paul Francis Harrison
+   Windows95/NT sound, CD-ROM and audio mixer routines, 
+   (C) 1998 Nils Desle (ndesle@hotmail.com)
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of the GNU General Public License as published by the
@@ -30,6 +28,7 @@
 #include <stdlib.h>
 #include <windows.h>
 #include <mmsystem.h>
+#include <winbase.h>
 #include "syna.h"
 
 
@@ -42,44 +41,31 @@
 static SoundSource source;
 static int inFrequency, downFactor, windowSize, pipeIn, device;
 static unsigned short *dataIn;
-int mixerno;
+static char* mixer;
 HWAVEIN hwi;
+HMIXER hmixer;
 WAVEHDR buffer[NUMBUFFERS];
 int bufcount;
 
 sampleType* lastBlock;
-
+HANDLE blockReadySemaphore;
 
 void CALLBACK SoundCallback(HWAVEIN lhwi, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
 {
   MMRESULT result;
 
   if(uMsg == WIM_DATA)
-  {
+  {	      
+
+	result = waveInUnprepareHeader(lhwi,(LPWAVEHDR)dwParam1,sizeof(WAVEHDR));
+    if(result != MMSYSERR_NOERROR)
+    {
+      error("Couldn't unprepare buffer");
+      return;
+    }
+
 	lastBlock = (sampleType*) ((LPWAVEHDR)dwParam1)->lpData;
-
-	waveInUnprepareHeader(lhwi,(LPWAVEHDR)dwParam1,sizeof(WAVEHDR));
-    buffer[bufcount].dwBufferLength = n*2*2;
-    buffer[bufcount].dwFlags = 0;
-    result = waveInPrepareHeader(hwi,&(buffer[bufcount]),sizeof(WAVEHDR));
-    if(result != MMSYSERR_NOERROR)
-    {
-      error("Couldn't prepare buffer");
-      return;
-    }
-
-    result = waveInAddBuffer(hwi,&(buffer[bufcount]),sizeof(WAVEHDR));
-    if(result != MMSYSERR_NOERROR)
-    {
-      error("Couldn't add buffer");
-      return;
-    }
-
-	bufcount++;
-	if(bufcount == NUMBUFFERS)
-	{
-	  bufcount = 0;
-	}
+        ReleaseSemaphore(blockReadySemaphore,1,NULL);
   }
 }
 
@@ -90,14 +76,7 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   ::source = source;
   ::inFrequency = inFrequency;
   ::windowSize = windowSize;
-  mixerno = atoi(mixerName);
-
-	int soundcard_nr = atoi(dspName);
-	if(soundcard_nr < 0)
-	{
-		error("Invalid soundcard no. specified in .cfg file");
-	}
-
+  mixer = mixerName;
 
   WAVEFORMATEX format;
 
@@ -109,8 +88,22 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   format.wBitsPerSample = 16;
   format.cbSize = 0;
 
+/* use this code later to find a given device!!
+  int numdevs =  waveInGetNumDevs();
+  WAVEINCAPS wic;
+  int j=0;
+  for(j=0;j<numdevs;j++)
+  {
+    MMRESULT result = waveInGetDevCaps(j,&wic,sizeof(wic));
+	if(result != MMSYSERR_NOERROR)
+	{
+	  error("Error querying device capabilities");
+	}
+  }
+*/
 
-  MMRESULT result = waveInOpen(&hwi, soundcard_nr, &format, (DWORD) &SoundCallback, NULL, CALLBACK_FUNCTION);
+//  MMRESULT result = waveInOpen(&hwi, WAVE_MAPPER, &format, (DWORD) &SoundCallback, NULL, CALLBACK_FUNCTION);
+  MMRESULT result = waveInOpen(&hwi, 0, &format, (DWORD) &SoundCallback, NULL, CALLBACK_FUNCTION);
   if(result != MMSYSERR_NOERROR)
   {
 	if(result == MMSYSERR_ALLOCATED)
@@ -132,6 +125,7 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   for(i=0;i<NUMBUFFERS;i++)
   {
 	unsigned short* tmpdata = new unsigned short[n*2];
+	memset(tmpdata,0,n*2*2);
 	buffer[i].lpData = (LPSTR) tmpdata;
     buffer[i].dwBufferLength = n*2*2;	// number of BYTES
     buffer[i].dwFlags = 0;
@@ -158,6 +152,10 @@ void openSound(SoundSource source, int inFrequency, int windowSize, char *dspNam
   lastBlock = data;
   bufcount=NUMBUFFERS-1;
 
+  blockReadySemaphore = CreateSemaphore(NULL,0,NUMBUFFERS,NULL);
+  if (!blockReadySemaphore)
+    error("Couldn't create semaphore");
+
   result = waveInStart(hwi);
   if(result != MMSYSERR_NOERROR)
   {
@@ -170,6 +168,7 @@ void closeSound()
 {
   waveInReset(hwi);
   waveInStop(hwi);
+  CloseHandle(blockReadySemaphore);
 
   delete[] data;
 }
@@ -177,7 +176,37 @@ void closeSound()
 
 int getNextFragment(void)
 {
+  WaitForSingleObject(blockReadySemaphore, INFINITE);
+
   data = lastBlock;
+
+  int result, i;
+
+  i = 0;
+  //do {
+    buffer[bufcount].dwBufferLength = n*2*2;
+    buffer[bufcount].dwFlags = 0;
+
+    result = waveInPrepareHeader(hwi,&(buffer[bufcount]),sizeof(WAVEHDR));
+    if(result != MMSYSERR_NOERROR)
+    {
+      error("Couldn't prepare buffer");
+    }
+
+    result = waveInAddBuffer(hwi,&(buffer[bufcount]),sizeof(WAVEHDR));
+    if(result != MMSYSERR_NOERROR)
+    {
+      error("Couldn't add buffer");
+    }
+
+    bufcount++;
+    if(bufcount == NUMBUFFERS)
+    {
+      bufcount = 0;
+    }
+//  } while(i++ < NUMBUFFERS &&
+//          WaitForSingleObject(blockReadySemaphore,0) == WAIT_OBJECT_0);
+  
   return 0;
 }
 
@@ -209,43 +238,20 @@ void setupMixer(double &loudness) {
 #endif
 }
 
-void setVolume(double loudness) 
-{
+void setVolume(double loudness) {
+  //if (mixerOpen(&hmixer, 0, 0, 0, MIXER_OBJECTF_MIXER)
+  //    != MMSYSERR_NOERROR) {
+  //  warning("opening mixer");
+  //  return;
+  //}
+
   MIXERLINE ml;
   ml.cbStruct = sizeof(ml);
   ml.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-
-  
-  MMRESULT result;
-  result = mixerGetLineInfo((void*)mixerno, &ml,
-       MIXER_OBJECTF_MIXER | MIXER_GETLINEINFOF_COMPONENTTYPE);
-  if (result != MMSYSERR_NOERROR)
-  {
-    switch(result)
-	{
-	case MIXERR_INVALLINE:
-		error("mixer: The audio line reference is invalid");
-		break;
-	case MMSYSERR_BADDEVICEID:
-		error("mixer: Bad device ID");
-		break;
-	case MMSYSERR_INVALFLAG:
-		error("mixer: invalid flag");
-		break;
-	case MMSYSERR_INVALHANDLE:
-		error("mixer: invalid handle");
-		break;
-	case MMSYSERR_INVALPARAM:
-		error("mixer: invalid parameter");
-		break;
-	case MMSYSERR_NODRIVER:
-		error("mixer: no valid driver");
-		break;
-	default:
-		error("mixer: unknown error");
-		break;
-	}
-  }
+  if (mixerGetLineInfo(0, &ml,
+       MIXER_OBJECTF_MIXER | MIXER_GETLINEINFOF_COMPONENTTYPE)
+      != MMSYSERR_NOERROR)
+    error("setting volume (1)");
 
   MIXERLINECONTROLS mlc;
   MIXERCONTROL mc;
@@ -257,41 +263,14 @@ void setVolume(double loudness)
   mlc.cbmxctrl = sizeof(mc);
   mlc.pamxctrl = &mc;
 
-  result = mixerGetLineControls((void*)mixerno, &mlc,
-    MIXER_OBJECTF_MIXER | MIXER_GETLINECONTROLSF_ONEBYTYPE);
-  if(result != MMSYSERR_NOERROR)
-  {
-    switch(result)
-	{
-	case MIXERR_INVALLINE:
-		error("mixer: The audio line reference is invalid");
-		break;
-	case MMSYSERR_BADDEVICEID:
-		error("mixer: Bad device ID");
-		break;
-	case MMSYSERR_INVALFLAG:
-		error("mixer: invalid flag");
-		break;
-	case MMSYSERR_INVALHANDLE:
-		error("mixer: invalid handle");
-		break;
-	case MMSYSERR_INVALPARAM:
-		error("mixer: invalid parameter");
-		break;
-	case MMSYSERR_NODRIVER:
-		error("mixer: no valid driver");
-		break;
-	default:
-		error("mixer: unknown error");
-		break;
-	}
-  }
-    
-
+  if (mixerGetLineControls(0, &mlc,
+    MIXER_OBJECTF_MIXER | MIXER_GETLINECONTROLSF_ONEBYTYPE)
+      != MMSYSERR_NOERROR)
+    error("setting volume (2)");
 
   MIXERCONTROLDETAILS d;
   d.cbStruct = sizeof(d);
-  d.dwControlID = mc.dwControlID;
+  d.dwControlID = mc.dwControlID; 
   d.cChannels = 1;
   d.cMultipleItems = 0;
   d.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
@@ -300,35 +279,32 @@ void setVolume(double loudness)
             (DWORD)(loudness * (mc.Bounds.dwMaximum-mc.Bounds.dwMinimum));
   d.paDetails = &value;
 
-  result = mixerSetControlDetails((void*)mixerno, &d, MIXER_OBJECTF_MIXER);
-  if(result != MMSYSERR_NOERROR)
-  {
-    switch(result)
-	{
-	case MIXERR_INVALLINE:
-		error("mixer: The audio line reference is invalid");
-		break;
-	case MMSYSERR_BADDEVICEID:
-		error("mixer: Bad device ID");
-		break;
-	case MMSYSERR_INVALFLAG:
-		error("mixer: invalid flag");
-		break;
-	case MMSYSERR_INVALHANDLE:
-		error("mixer: invalid handle");
-		break;
-	case MMSYSERR_INVALPARAM:
-		error("mixer: invalid parameter");
-		break;
-	case MMSYSERR_NODRIVER:
-		error("mixer: no valid driver");
-		break;
-	default:
-		error("mixer: unknown error");
-		break;
-	}
+  if (mixerSetControlDetails(0, &d, MIXER_OBJECTF_MIXER)
+      != MMSYSERR_NOERROR)
+    error("setting volume (3)");
+
+  //mixerClose(hmixer);
+
+#ifndef WIN32
+  int device = open(mixer,O_WRONLY);
+  if (device == -1)
+    warning("opening mixer device");
+  else {
+    int scaledLoudness = int(loudness * 100.0);
+    if (scaledLoudness < 0) scaledLoudness = 0;
+    if (scaledLoudness > 100) scaledLoudness = 100;
+    scaledLoudness = scaledLoudness*256 + scaledLoudness;
+    if (source == SourceCD) {
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_CD,&scaledLoudness),"writing to mixer");
+    } else if (source == SourceLine) {
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_LINE,&scaledLoudness),"writing to mixer");
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_MIC,&scaledLoudness),"writing to mixer");
+    } else {
+      attemptNoDie(ioctl(device,SOUND_MIXER_WRITE_PCM,&scaledLoudness),"writing to mixer");
+    }
+    close(device);
   }
-    
+#endif  
 }
 
 
@@ -336,12 +312,20 @@ void setVolume(double loudness)
 /* CDROM stuff ============================================== */
 
 
-#define CD_FRAMES 75	/* trial & error guess, but it seems to work... */
+#define CD_FRAMES 75	/* wild guess, but it seems to work...?? */
 
 static int trackCount=0, *trackFrame = 0;
 MCIDEVICEID cd_device;
 
-bool bugfixed_pause = false;
+bool bugfixed_pause = false;		// for some weird reason, my CD player reports "Stopped" when in pause,
+									// so I keep my own status for this now.
+
+void cdError(char *str) {
+  //May want to print the message, but for now
+  delete trackFrame;
+  trackFrame = 0;
+  trackCount = 0;
+}
 
 int lastEndFrame=0;
 int pausedPosition=0;
@@ -364,11 +348,8 @@ unsigned int SynMSFtoWinMSF(unsigned int SynMSF)
 
 void cdOpen(char* cdromName)
 {
-	int cdrom_nr = atoi(cdromName);
-	if(cdrom_nr < 0)
-	{
-		error("Invalid CD-ROM device number specified in .cfg file");
-	}
+// tbd: get correct CDrom names in config screen, specify the correct one in
+// cdromName, use that one in devicetype.
 
   MCIERROR retval;
   MCI_OPEN_PARMS openstruct;
@@ -378,7 +359,6 @@ void cdOpen(char* cdromName)
   openstruct.dwCallback = NULL;
   openstruct.wDeviceID = NULL;
   openstruct.lpstrDeviceType = (LPSTR) MCI_DEVTYPE_CD_AUDIO;
-  openstruct.lpstrDeviceType = (LPSTR)((DWORD)(openstruct.lpstrDeviceType) | (DWORD)(cdrom_nr << 16));	// ordinal number of device in high order word
   openstruct.lpstrElementName = NULL;
   openstruct.lpstrAlias = NULL;
 
@@ -388,7 +368,8 @@ void cdOpen(char* cdromName)
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdOpen) - Please make sure you have no other CD-players active!");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
 
   cd_device = openstruct.wDeviceID;
@@ -403,7 +384,8 @@ void cdOpen(char* cdromName)
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdOpen)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
 }
 
@@ -421,7 +403,8 @@ void cdClose(void)
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdClose)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
 
   delete[] trackFrame;
@@ -444,7 +427,8 @@ void getTrackInfo(void)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (getTrackInfo)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 	trackCount = parms.dwReturn;
 
@@ -462,7 +446,8 @@ void getTrackInfo(void)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (getTrackInfo)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 	startpos = WinMSFtoSynMSF(parms.dwReturn);
 
@@ -474,7 +459,8 @@ void getTrackInfo(void)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (getTrackInfo)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 	length = WinMSFtoSynMSF(parms.dwReturn);
 
@@ -491,7 +477,8 @@ void getTrackInfo(void)
 			char errorstr[256];
 			mciGetErrorString(retval,errorstr,256);
 			strcat(errorstr," (getTrackInfo)");
-			error(errorstr);
+                        cdError(errorstr);
+                        return;
 		}
 		DWORD tracktype = parms.dwReturn;
 
@@ -510,7 +497,8 @@ void getTrackInfo(void)
 				char errorstr[256];
 				mciGetErrorString(retval,errorstr,256);
 				strcat(errorstr," (getTrackInfo)");
-				error(errorstr);
+                                cdError(errorstr);
+                                return;
 			}
 			startpos = WinMSFtoSynMSF(parms.dwReturn);
 			trackFrame[i] = startpos;
@@ -544,7 +532,11 @@ void cdPlay(int frame, int endFrame)
   bugfixed_pause = false;
 
   if (frame < 1) frame = 1;
-  if (endFrame < 1) endFrame = trackFrame[trackCount];
+  if (endFrame < 1) 
+	if (trackCount > 0)
+	  endFrame = trackFrame[trackCount];
+    else
+	  endFrame = 1;
 
   lastEndFrame = endFrame;
 
@@ -559,7 +551,8 @@ void cdPlay(int frame, int endFrame)
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdPlay)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
 }
 
@@ -577,7 +570,9 @@ void cdGetStatus(int &track, int &frames, SymbolID &state)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdGetStatus)");
-		error(errorstr);
+                state = NoCD; track = 1; frames = 0;
+                cdError(errorstr);
+                return;
 	}
 
 	DWORD cdstate = parms.dwReturn;
@@ -622,7 +617,9 @@ void cdGetStatus(int &track, int &frames, SymbolID &state)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdGetStatus)");
-		error(errorstr);
+                state = NoCD; track = 1; frames = 0;
+                cdError(errorstr);
+                return;
 	}
 	track = parms.dwReturn;
 
@@ -633,7 +630,9 @@ void cdGetStatus(int &track, int &frames, SymbolID &state)
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdGetStatus)");
-		error(errorstr);
+                state = NoCD; track = 1; frames = 0;
+                cdError(errorstr);
+                return;
 	}
 	frames = WinMSFtoSynMSF(parms.dwReturn);
 	if(trackFrame)
@@ -665,7 +664,8 @@ void cdStop(void)
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdStop)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
 }
 
@@ -683,7 +683,8 @@ void cdPause()
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdPause)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 */
 
@@ -697,7 +698,8 @@ void cdPause()
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdPause)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 	pausedPosition = WinMSFtoSynMSF(parms.dwReturn);
 
@@ -717,7 +719,8 @@ void cdResume()
 		char errorstr[256];
 		mciGetErrorString(retval,errorstr,256);
 		strcat(errorstr," (cdResume)");
-		error(errorstr);
+                cdError(errorstr);
+                return;
 	}
 */
 
@@ -728,7 +731,8 @@ void cdResume()
 	}
 	else
 	{
-		error("trying to resume a non-paused state???");
+                cdError("trying to resume a non-paused state???");
+                return;
 	}
 }
 
@@ -742,7 +746,8 @@ void cdEject()
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdEject)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
   bugfixed_pause = false;
 }
@@ -757,7 +762,8 @@ void cdCloseTray()
     char errorstr[256];
     mciGetErrorString(retval,errorstr,256);
 	strcat(errorstr," (cdCloseTray)");
-	error(errorstr);
+        cdError(errorstr);
+        return;
   }
   bugfixed_pause = false;
 }
