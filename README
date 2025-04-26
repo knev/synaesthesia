@@ -1,0 +1,36 @@
+SYNAESTHESIA v1.1
+
+Introduction
+============
+
+This is a program for representing sounds visually (from a CD or line
+input). It goes beyond the usual oscilliscope style program by combining
+an FFT and stereo positioning information to give a two dimensional
+display. Some of the shapes I have observed are:
+  * Drums: clouds of color, fairly high
+  * Clean guitar: several horizontal lines, low down
+  * Rough guitar: a cloud, low down
+  * Trumpet: Lots of horizontal lines everywhere
+  * Flute: A single horizontal line, low down
+  * Voice: A vertical line with some internal structure
+
+Surround sound decoding has been added in version 1.1. Ambient noise is
+shown in orange.
+
+Usage
+=====
+
+Run Synaesthesia with no parameters for information on how to use it.
+
+
+
+This program is free. If you like it, or have any suggestions, please
+send me (Paul Harrison) an email (phar6@student.monash.edu.au).
+
+
+Changes
+=======
+
+1.1 - Added surround sound decoding
+1.2 - Fixed a bug in the ioctl calls to /dev/dsp
+
