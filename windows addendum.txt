@@ -1,0 +1,27 @@
+Addendum to readme file for Windows95 version:
+
+- Make sure the mixer settings are correct for CD-Rom recording and/or Line in. Do this by
+  opening the mixer (loudspeaker icon at the bottom of your Windows Taskbar). Choose 
+  "Options", "Properties", choose "Recording", click "OK", make sure the "select" radio
+  button is ticked for CD-Rom and/or Line-in, depending on your preferences, and set the
+  appropriate volumes if necessary.
+
+- Synaesthesia might not want to start (throw an error message on the screen) if an other
+  CD-player program is running. Close all other CD-players before starting synaesthesia.
+
+- Toggle between full-screen and windowed by pressing Alt-Enter.
+
+- If you have more than one soundcard, edit the synaesthesia .cfg file (auto-generated 
+  the first time you run the program), and set the appropriate number for your soundcard
+  in the "wave" parameter. 0 is the first soundcard in your system. (UNTESTED)
+
+- If you have more than one CD-Rom player, edit the synaesthesia .cfg file (auto-generated 
+  the first time you run the program), and set the appropriate number for your CD-Rom
+  in the "cdrom" parameter. 0 is the first CD-Rom in your system. (UNTESTED)
+
+- If the volume-changing doesn't work on your machine, (possible with multiple soundcards), 
+  try changing the mixer number in the configuration file.
+
+- If you want to rebuild the synaesthesia for Windows project, you'll need the PTC 0.73a 
+  library. Go to www.gaffer.com, and look for PTC 0.72, and also download the 0.73a patch.
+  You'll have to rebuild the library yourself.
